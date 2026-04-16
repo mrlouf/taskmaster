@@ -68,8 +68,7 @@ func runDaemon(args []string) error {
 	defer signal.Stop(sigCh)
 
 	select {
-	case sig := <-sigCh:
-		_ = sig
+	case <-sigCh:
 		cancel()
 	case err := <-serverErr:
 		if err != nil {

@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -66,7 +67,7 @@ func SendCommand(address, command string) (string, error) {
 		return "", err
 	}
 	if !res.OK {
-		return "", fmt.Errorf(res.Message)
+		return "", errors.New(res.Message)
 	}
 	return res.Message, nil
 }

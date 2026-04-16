@@ -135,7 +135,7 @@ func (m *Manager) Stop(name string) error {
 	m.mu.Unlock()
 
 	if currentCmd.Process == nil {
-		return errors.New("process not started")
+		return errors.New("cannot signal process: no process handle")
 	}
 
 	_ = currentCmd.Process.Signal(syscall.SIGTERM)

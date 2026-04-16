@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -51,7 +52,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			if errorsIsClosed(err) {
+			if isNetworkClosedError(err) {
 				return nil
 			}
 			return err
@@ -152,6 +153,12 @@ func (s *Server) handleCommand(line string) response {
 	}
 }
 
-func errorsIsClosed(err error) bool {
+func isNetworkClosedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
 	return strings.Contains(err.Error(), "use of closed network connection")
 }
