@@ -75,14 +75,15 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		res := s.handleCommand(scanner.Text())
+		command := strings.TrimSpace(scanner.Text())
+		res := s.handleCommand(command)
 		payload, err := json.Marshal(res)
 		if err != nil {
 			_, _ = io.WriteString(conn, `{"ok":false,"message":"internal error"}`+"\n")
 			return
 		}
 		_, _ = conn.Write(append(payload, '\n'))
-		if strings.TrimSpace(scanner.Text()) == "shutdown" {
+		if command == "shutdown" {
 			return
 		}
 	}

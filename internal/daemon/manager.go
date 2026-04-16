@@ -138,7 +138,9 @@ func (m *Manager) Stop(name string) error {
 		return errors.New("cannot signal process: no process handle")
 	}
 
-	_ = currentCmd.Process.Signal(syscall.SIGTERM)
+	if err := currentCmd.Process.Signal(syscall.SIGTERM); err != nil {
+		return err
+	}
 	timeout := time.NewTimer(3 * time.Second)
 	defer timeout.Stop()
 
