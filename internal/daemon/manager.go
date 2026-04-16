@@ -13,6 +13,11 @@ import (
 	"github.com/mrlouf/taskmaster/internal/config"
 )
 
+const (
+	stopTimeout      = 3 * time.Second
+	stopPollInterval = 100 * time.Millisecond
+)
+
 type ProcessStatus struct {
 	Name  string
 	State string
@@ -141,10 +146,10 @@ func (m *Manager) Stop(name string) error {
 	if err := currentCmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return err
 	}
-	timeout := time.NewTimer(3 * time.Second)
+	timeout := time.NewTimer(stopTimeout)
 	defer timeout.Stop()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(stopPollInterval)
 	defer ticker.Stop()
 
 	for {
