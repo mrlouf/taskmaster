@@ -32,7 +32,7 @@ dev: pkill
 	@mkdir -pv ./.logs
 	air -c .air.daemon.toml &> ./.logs/daemon.log &
 	@sleep 1 # wait for the daemon to start
-	air -c .air.controller.toml &> ./logs/controller.log
+	air -c .air.controller.toml &> ./.logs/controller.log
 
 pkill:
 	-@pkill -f "air -c .air.daemon.toml" &>/dev/null || true

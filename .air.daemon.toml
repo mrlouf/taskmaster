@@ -1,14 +1,14 @@
 #:schema https://json.schemastore.org/any.json
 
 env_files = []
-root = "./cmd/taskmasterd"
+root = "."
 testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
   args_bin = []
   bin = "./tmp/taskmasterd"
-  cmd = "go build -o ./cmd/taskmasterd/tmp/taskmasterd ./cmd/taskmasterd"
+  cmd = "go build -o ./tmp/taskmasterd ./cmd/taskmasterd"
   delay = 1000
   entrypoint = ["./tmp/taskmasterd"]
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
@@ -18,7 +18,7 @@ tmp_dir = "tmp"
   follow_symlink = false
   full_bin = ""
   ignore_dangerous_root_dir = false
-  include_dir = []
+  include_dir = ["internal", "cmd"]
   include_ext = ["go", "tpl", "tmpl", "html"]
   include_file = []
   kill_delay = "0s"
