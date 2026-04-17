@@ -3,6 +3,9 @@ package handlers
 import (
 	"fmt"
 	"net"
+	"os"
+
+	"github.com/mrlouf/taskmaster/internal/config"
 )
 
 func RequestShutdown(conn net.Conn) error {
@@ -10,6 +13,24 @@ func RequestShutdown(conn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to send shutdown request: %w", err)
 	}
+
+	return nil
+}
+
+func HandleShutdown(conn net.Conn, config *config.Config) error {
+
+	// TODO: Add graceful shutdown logic here (stop all programs, clean up resources, etc.)
+	for name := range config.Programs {
+		fmt.Printf("Stopping program '%s'...\n", name)
+	}
+
+	_, err := conn.Write([]byte(`{"ok": true, "msg": "Shutting down daemon..."}`))
+	if err != nil {
+		return fmt.Errorf("failed to send shutdown response: %w", err)
+	}
+
+	conn.Close()
+	os.Exit(0)
 
 	return nil
 }

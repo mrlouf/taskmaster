@@ -6,7 +6,8 @@ import (
 	"net"
 	"os"
 
-	cfg "github.com/mrlouf/taskmaster/internal/config"
+	"github.com/mrlouf/taskmaster/internal/config"
+	"github.com/mrlouf/taskmaster/internal/protocol/handlers"
 )
 
 type Request struct {
@@ -32,7 +33,7 @@ func OpenSocket() (net.Listener, error) {
 	return socket, nil
 }
 
-func HandleConnection(conn net.Conn, config *cfg.Config) {
+func HandleConnection(conn net.Conn, config *config.Config) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -66,8 +67,12 @@ func HandleConnection(conn net.Conn, config *cfg.Config) {
 
 }
 
-func handleRequest(conn net.Conn, req Request, config *cfg.Config) error {
+func handleRequest(conn net.Conn, req Request, config *config.Config) error {
+
+	var err error
+
 	switch req.Cmd {
+
 	case "start":
 		fmt.Println("Starting program", req.Name)
 	case "stop":
@@ -80,16 +85,11 @@ func handleRequest(conn net.Conn, req Request, config *cfg.Config) error {
 		fmt.Println("Reloading configuration...")
 	case "shutdown":
 
-		fmt.Println("Shutdown command received")
-		_, err := conn.Write([]byte(`{"ok": true, "msg": "Shutting down taskmasterd..."}`))
-		if err != nil {
-			return fmt.Errorf("failed to send shutdown response: %w", err)
-		}
-		defer conn.Close()
-		os.Exit(0)
+		err = handlers.HandleShutdown(conn, config)
 
 	default:
 		return fmt.Errorf("unknown command: %s", req.Cmd)
 	}
-	return nil
+
+	return err
 }

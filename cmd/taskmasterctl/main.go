@@ -65,6 +65,7 @@ func handleCommand(line string, socket net.Conn) error {
 		err = handlers.RequestShutdown(socket)
 
 	case "help":
+
 		fmt.Println("Available commands: start, stop, status, restart, reload, shutdown, help")
 
 	case "exit":
@@ -114,6 +115,18 @@ func run() error {
 		}
 	}
 	defer socket.Close()
+
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			n, err := socket.Read(buf)
+			if err != nil {
+				log.Printf("Failed to read from socket: %v", err)
+				return
+			}
+			fmt.Printf("Received response: %s\n", string(buf[:n]))
+		}
+	}()
 
 	for {
 		line, err := rl.Readline()
