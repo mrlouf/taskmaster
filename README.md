@@ -31,3 +31,7 @@ Since Air is not natively supporting multi-binary projects, I have declared a ta
 ```bash
 make dev
 ```
+
+#### References
+
+- [UNIX sockets in Golang](https://dev.to/douglasmakey/understanding-unix-domain-sockets-in-golang-32n8)
