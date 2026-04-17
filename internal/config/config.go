@@ -7,14 +7,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type IntOrSlice []int
+
+// Custom unmarshal function to handle both single int and slice of ints
+// in the YAML configuration, such as for the "exitcodes" field.
+func (i *IntOrSlice) UnmarshalYAML(value *yaml.Node) error {
+	var single int
+	if err := value.Decode(&single); err == nil {
+		*i = []int{single}
+		return nil
+	}
+
+	var slice []int
+	if err := value.Decode(&slice); err != nil {
+		return fmt.Errorf("failed to decode IntOrSlice: %w", err)
+	}
+	*i = slice
+	return nil
+}
+
 type Program struct {
 	Command      string            `yaml:"cmd"`
 	NumProcs     int               `yaml:"numprocs"`
 	Umask        int               `yaml:"umask"`
 	WorkingDir   string            `yaml:"workingdir"`
 	AutoStart    bool              `yaml:"autostart"`
-	AutoRestart  bool              `yaml:"autorestart"`
-	ExitCodes    []int             `yaml:"exitcodes"`
+	AutoRestart  string            `yaml:"autorestart"`
+	ExitCodes    IntOrSlice        `yaml:"exitcodes"`
 	StartRetries int               `yaml:"startretries"`
 	StartTime    int               `yaml:"starttime"`
 	StopSignal   string            `yaml:"stopsignal"`
@@ -45,8 +64,6 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config file: %w", err)
 	}
-
-	fmt.Printf("Loaded config: %+v\n", cfg)
 
 	err = cfg.validate()
 	if err != nil {

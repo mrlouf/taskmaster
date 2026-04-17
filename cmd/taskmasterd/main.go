@@ -21,7 +21,9 @@ func run() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	fmt.Printf("Config loaded successfully: %+v\n", config)
+	for name := range config.Programs {
+		fmt.Printf("Program '%s'\n", name)
+	}
 
 	return nil
 }
