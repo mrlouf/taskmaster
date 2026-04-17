@@ -39,11 +39,12 @@ func HandleConnection(conn net.Conn, config *cfg.Config) {
 
 	n, err := conn.Read(buf)
 	if err != nil {
+		// TODO: Send error response to client, write to log, etc.
 		return
 	}
 
 	// * DEBUG
-	fmt.Printf("Received raw data: %s\n", string(buf[:n]))
+	fmt.Printf("Received raw data: %s", string(buf[:n]))
 
 	var req Request
 	err = json.Unmarshal(buf[:n], &req)
