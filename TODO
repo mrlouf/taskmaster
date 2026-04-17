@@ -1,0 +1,18 @@
+- Implement a basic ping/pong connection logic between controller and daemon over a Unix socket.
+- Try testing leaks with valgrind and address sanitizer, especially for zombie processes.
+- Add a simple command-line interface for the controller to send commands to the daemon.
+- Add a security layer using file permissions to restrict access to the daemon.
+
+taskmaster/
+  cmd/
+    taskmasterd/
+      main.go        // package main #1
+    taskmasterctl/
+      main.go        // package main #2
+  internal/
+    config/
+    supervisor/
+    protocol/
+    logger/
+  go.mod
+  go.sum
