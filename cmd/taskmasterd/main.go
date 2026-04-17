@@ -2,12 +2,26 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
+
+	"github.com/mrlouf/taskmaster/internal/config"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: taskmasterd <command> [args]")
-		os.Exit(1)
+	// Try and catch equivalent in Go
+	if err := run(); err != nil {
+		log.Fatal(err)
 	}
+}
+
+func run() error {
+
+	config, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	fmt.Printf("Config loaded successfully: %+v\n", config)
+
+	return nil
 }

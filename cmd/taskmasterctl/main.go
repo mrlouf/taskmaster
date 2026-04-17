@@ -7,7 +7,7 @@ import (
 
 func main() {
 
-	if len(os.Args) < 2 {
+	if len(os.Args) < 1 {
 		fmt.Println("Usage: taskmasterctl <command> [args]")
 		os.Exit(1)
 	}
