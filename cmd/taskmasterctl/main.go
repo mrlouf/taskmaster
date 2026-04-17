@@ -3,59 +3,83 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/chzyer/readline"
+
+	"github.com/mrlouf/taskmaster/internal/protocol/handlers"
 )
 
 func gracefulExit(rl *readline.Instance) {
-	fmt.Println("Received interrupt signal, exiting...")
-	rl.Close()
+
+	if rl != nil {
+		rl.Close()
+	}
 	os.Exit(0)
 }
 
-func handleCommand(line string) error {
+func handleCommand(line string, socket net.Conn) error {
 
 	cmd := strings.Split(line, " ")[0]
-	name := strings.TrimSpace(strings.TrimPrefix(line, cmd))
+
+	name := ""
+	len := len(strings.Split(line, " "))
+	if len > 1 {
+		name = strings.Split(line, " ")[1]
+		if len > 2 {
+			return fmt.Errorf("Multiple arguments are not supported (yet)")
+		}
+	}
+
+	var err error
 
 	switch cmd {
 
 	case "start":
-		if name == "" {
-			return fmt.Errorf("program name is required for start command")
-		}
-		fmt.Println("Starting program...", name)
+
+		err = handlers.RequestStart(socket, name)
+
 	case "stop":
-		if name == "" {
-			return fmt.Errorf("program name is required for stop command")
-		}
-		fmt.Println("Stopping program...", name)
+
+		err = handlers.RequestStop(socket, name)
+
 	case "status":
-		if name == "" {
-			return fmt.Errorf("program name is required for status command")
-		}
-		fmt.Println("Program status: ...", name)
+
+		err = handlers.RequestStatus(socket, name)
+
 	case "restart":
-		if name == "" {
-			return fmt.Errorf("program name is required for restart command")
-		}
-		fmt.Println("Restarting program...", name)
+
+		err = handlers.RequestRestart(socket, name)
+
 	case "reload":
-		fmt.Println("Reloading configuration...")
+
+		err = handlers.RequestReload(socket)
+
 	case "shutdown":
-		fmt.Println("Shutting down taskmasterd...")
+
+		err = handlers.RequestShutdown(socket)
+
 	case "help":
 		fmt.Println("Available commands: start, stop, status, restart, reload, shutdown, help")
+
 	case "exit":
+
 		fmt.Println("Goodbye!")
 		os.Exit(0)
+
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
+
+	if err != nil {
+		return fmt.Errorf("failed to send %s command: %w", cmd, err)
+	}
+
 	return nil
 }
 
@@ -74,6 +98,23 @@ func run() error {
 		gracefulExit(rl)
 	}()
 
+	socket, err := net.Dial("unix", "/tmp/taskmaster.sock")
+	if err != nil {
+		count := 0
+		for {
+			time.Sleep(1 * time.Second)
+			socket, err = net.Dial("unix", "/tmp/taskmaster.sock")
+			if err == nil {
+				break
+			}
+			count++
+			if count >= 5 {
+				return fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
+			}
+		}
+	}
+	defer socket.Close()
+
 	for {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
@@ -82,7 +123,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("failed to read line: %w", err)
 		}
-		err = handleCommand(line)
+		err = handleCommand(line, socket)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		}

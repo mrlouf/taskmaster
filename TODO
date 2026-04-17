@@ -5,3 +5,5 @@
 # daemon/controller communication protocol
 
 - Define a simple protocol for communication between the controller and the daemon over a Unix socket. This could be a JSON-based protocol where the controller sends commands like "start", "stop", "status", etc., along with the name of the program to manage. The daemon would respond with a status message indicating success or failure of the command.
+
+- Implement the daemon to listen to multiple controllers simultaneously, allowing for concurrent command processing. This would involve using goroutines to handle each incoming connection on the Unix socket.
