@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Program struct {
@@ -19,41 +19,64 @@ type Program struct {
 	StartTime    int               `yaml:"starttime"`
 	StopSignal   string            `yaml:"stopsignal"`
 	StopTime     int               `yaml:"stoptime"`
-	StdoutLog    string            `yaml:"stdout"`
-	StderrLog    string            `yaml:"stderr"`
+	Stdout       string            `yaml:"stdout"`
+	Stderr       string            `yaml:"stderr"`
 	Env          map[string]string `yaml:"env"`
 }
 
 type Config struct {
-	programs map[string]Program `yaml:"programs"`
+	Programs map[string]Program `yaml:"programs"`
 }
 
 func LoadConfig() (*Config, error) {
 
-	_, err := os.Stat("taskmaster.yaml")
+	_, err := os.Stat("./taskmaster.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat config file: %w", err)
 	}
 
-	file, err := os.Open("taskmaster.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
-
-	var content []byte
-	_, err = file.Read(content)
+	file, err := os.ReadFile("./taskmaster.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config Config
-	err = yaml.Unmarshal(content, &config)
+	var cfg Config
+	err = yaml.Unmarshal(file, &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config file: %w", err)
+	}
 
-	fmt.Printf("Loaded config: %+v\n", config)
+	fmt.Printf("Loaded config: %+v\n", cfg)
 
-	return &Config{
-		programs: make(map[string]Program),
-	}, nil
+	err = cfg.validate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate config: %w", err)
+	}
 
+	return &cfg, nil
+
+}
+
+func (cfg *Config) validate() error {
+	for name, program := range cfg.Programs {
+		if program.Command == "" {
+			return fmt.Errorf("program '%s' has an empty command", name)
+		}
+		if program.NumProcs < 1 {
+			return fmt.Errorf("program '%s' must have at least 1 process", name)
+		}
+		if program.Umask < 0 || program.Umask > 0o777 {
+			return fmt.Errorf("program '%s' has an invalid umask: %o", name, program.Umask)
+		}
+		if program.StartRetries < 0 {
+			return fmt.Errorf("program '%s' has a negative startretries value", name)
+		}
+		if program.StartTime < 0 {
+			return fmt.Errorf("program '%s' has a negative starttime value", name)
+		}
+		if program.StopTime < 0 {
+			return fmt.Errorf("program '%s' has a negative stoptime value", name)
+		}
+	}
+	return nil
 }

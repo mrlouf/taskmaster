@@ -1,16 +1,16 @@
 #:schema https://json.schemastore.org/any.json
 
 env_files = []
-root = "./cmd/taskmasterctl"
+root = "."
 testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = "./tmp/taskmasterctl"
-  cmd = "go build -o ./tmp/taskmasterctl ./cmd/taskmasterctl"
+  bin = "./taskmasterctl"
+  cmd = "go build -o ./taskmasterctl ./cmd/taskmasterctl"
   delay = 1000
-  entrypoint = ["./tmp/taskmasterctl"]
+  entrypoint = ["./taskmasterctl"]
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_file = []
   exclude_regex = ["_test.go"]
