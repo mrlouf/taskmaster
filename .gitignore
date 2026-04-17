@@ -11,6 +11,7 @@
 taskmasterd
 taskmasterctl
 tmp
+.logs
 
 # Test binary, built with `go test -c`
 *.test
