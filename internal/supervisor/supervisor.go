@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
 	"github.com/mrlouf/taskmaster/internal/protocol"
@@ -100,17 +102,13 @@ func (s *Supervisor) handleShutdown() {
 
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 
-	err := process.cmd.Wait()
-	process.done <- err
-
 	go func() {
 		time.Sleep(time.Second * time.Duration(cfg.StartTime))
 		s.Events <- Event{Kind: EventProcessReady, Name: process.Name}
 	}()
-	go func() {
-		time.Sleep(time.Second * time.Duration(cfg.StopTime))
-		s.Events <- Event{Kind: EventStopProcess, Name: process.Name}
-	}()
+
+	err := process.cmd.Wait()
+	process.done <- err
 
 	if err != nil {
 		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d exited with error: %v", process.Name, process.pid, err))
@@ -202,6 +200,7 @@ func (s *Supervisor) handleDied(event Event) {
 
 func (s *Supervisor) stopProcess(name string) error {
 
+	cfg := s.Config.Programs[name]
 	process, exists := s.Processes[name]
 	if !exists {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
@@ -211,24 +210,31 @@ func (s *Supervisor) stopProcess(name string) error {
 		return fmt.Errorf("process '%s' is not running or starting, cannot stop", name)
 	}
 
-	err := process.cmd.Process.Kill()
-	if err != nil {
-		return fmt.Errorf("failed to stop process '%s' with PID %d: %w", name, process.pid, err)
+	process.state = Stopping
+
+	signal := unix.SignalNum(cfg.StopSignal)
+	fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
+	process.cmd.Process.Signal(signal)
+
+	select {
+	case <-process.done:
+
+	case <-time.After(time.Duration(cfg.StopTime) * time.Second):
+		// toujours vivant → SIGKILL
+		process.cmd.Process.Kill()
+		<-process.done
 	}
 
-	process.state = Stopping
-	s.Events <- Event{Kind: EventProcessDied, Name: name}
-
-	s.Logger.Log(fmt.Sprintf("Sent kill signal to process '%s' with PID %d", name, process.pid))
-
+	process.state = Stopped
 	return nil
+
 }
 
 func (s *Supervisor) Start() {
 
 	s.autoStartProcesses()
 
-	go func() {
+	/* 	go func() {
 
 		for {
 			fmt.Println("Active processes in supervisor:")
@@ -238,7 +244,7 @@ func (s *Supervisor) Start() {
 			}
 			time.Sleep(2 * time.Second)
 		}
-	}()
+	}() */
 
 	for event := range s.Events {
 		switch event.Kind {

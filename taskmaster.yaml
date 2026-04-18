@@ -35,7 +35,7 @@ programs:
     stderr: /tmp/vgsworker.stderr
 
   sleep:
-    cmd: "sleep 30"
+    cmd: "sleep 5 && exit 1"
     numprocs: 2
     umask: 077
     workingdir: /tmp
@@ -43,7 +43,7 @@ programs:
     autorestart: unexpected
     exitcodes: 0
     startretries: 3
-    starttime: 5
+    starttime: 1
     stopsignal: USR1
     stoptime: 10
     stdout: /tmp/sleep.stdout
