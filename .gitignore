@@ -8,8 +8,10 @@
 *.so
 *.dylib
 
-taskmasterd
-taskmasterctl
+# ignore binaries but not folders
+/taskmasterd
+/taskmasterctl
+
 tmp
 .logs
 
