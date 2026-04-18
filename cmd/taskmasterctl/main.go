@@ -84,7 +84,9 @@ func handleCommand(line string, client protocol.Client) error {
 	return nil
 }
 
-func connectToSocket(c *protocol.Client) (protocol.Client, error) {
+func connectToSocket() (protocol.Client, error) {
+
+	var c protocol.Client
 
 	socket, err := net.Dial("unix", "/tmp/taskmaster.sock")
 	if err != nil {
@@ -93,15 +95,16 @@ func connectToSocket(c *protocol.Client) (protocol.Client, error) {
 			time.Sleep(1 * time.Second)
 			socket, err = net.Dial("unix", "/tmp/taskmaster.sock")
 			if err == nil {
-				return protocol.Client{Socket: socket}, nil
+				break
 			}
 			count++
 			if count >= 5 {
-				return protocol.Client{}, fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
+				return c, fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
 			}
 		}
 	}
-	return protocol.Client{Socket: socket}, nil
+	c.Socket = socket
+	return c, nil
 }
 
 func run() error {
@@ -119,8 +122,7 @@ func run() error {
 		gracefulExit(rl)
 	}()
 
-	client := protocol.Client{}
-	_, err = connectToSocket(&client)
+	client, err := connectToSocket()
 	if err != nil {
 		return fmt.Errorf("failed to connect to socket: %w", err)
 	}
@@ -133,7 +135,8 @@ func run() error {
 				log.Printf("Failed to read from socket: %v", err)
 				return
 			}
-			fmt.Printf("Received response: %s\n", string(buf[:n]))
+			fmt.Printf("Received response: %s", string(buf[:n]))
+
 		}
 	}()
 

@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 
@@ -40,35 +42,36 @@ func OpenSocket() (net.Listener, error) {
 
 func HandleConnection(conn net.Conn, config *config.Config) {
 
-	buf := make([]byte, 1024)
+	defer conn.Close()
 
-	n, err := conn.Read(buf)
-	if err != nil {
-		// TODO: Send error response to client, write to log, etc.
-		return
+	enc := json.NewEncoder(conn)
+	dec := json.NewDecoder(conn)
+
+	for {
+
+		var req Request
+		if err := dec.Decode(&req); err != nil {
+			// io.EOF = ctl s'est déconnecté proprement, pas une erreur
+			if err != io.EOF {
+				log.Printf("read error: %v", err)
+			}
+			return
+		}
+
+		resp := handleRequest(conn, req, config)
+
+		if err := enc.Encode(resp); err != nil {
+			log.Printf("write error: %v", err)
+			return
+		}
+
+		if resp != nil {
+			log.Printf("Handled request: %s %s - Response: %v", req.Cmd, req.Name, resp)
+		} else {
+			log.Printf("Handled request: %s %s - No response", req.Cmd, req.Name)
+		}
+
 	}
-
-	// * DEBUG
-	fmt.Printf("Received raw data: %s", string(buf[:n]))
-
-	var req Request
-	err = json.Unmarshal(buf[:n], &req)
-	if err != nil {
-		// TODO: Send error response to client, write to log, etc.
-		return
-	}
-
-	// * DEBUG
-	fmt.Printf("Unmarshalled request: %+v\n", req)
-
-	err = handleRequest(conn, req, config)
-	if err != nil {
-		// TODO: Send error response to client, write to log, etc.
-		return
-	}
-
-	config = nil
-
 }
 
 func handleRequest(conn net.Conn, req Request, config *config.Config) error {
