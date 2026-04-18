@@ -27,19 +27,6 @@ type Response struct {
 	Msg string `json:"msg"`
 }
 
-func OpenSocket() (net.Listener, error) {
-
-	// Remove existing socket file if it exists, ignore error if it doesn't exist
-	_ = os.Remove("/tmp/taskmaster.sock")
-
-	socket, err := net.Listen("unix", "/tmp/taskmaster.sock")
-	if err != nil {
-		return nil, err
-	}
-
-	return socket, nil
-}
-
 func HandleConnection(client Client, config *config.Config, logger *logger.Logger) {
 
 	defer client.Socket.Close()
@@ -124,23 +111,26 @@ func RequestShutdown(c Client) error {
 
 func HandleShutdown(client Client, config *config.Config, logger *logger.Logger) error {
 
-	// TODO: Add graceful shutdown logic here (stop all programs, clean up resources, etc.)
-	for name := range config.Programs {
-		logger.Log(fmt.Sprintf("Stopping program '%s'...", name))
-	}
+	var err error
 
 	var resp Response
-	resp.Ok = true
-	resp.Msg = "Taskmaster is shutting down"
+	if err == nil {
+
+		resp.Ok = true
+		resp.Msg = "Taskmaster is shutting down"
+
+	} else {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Failed to shutdown: %v", err)
+
+	}
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send shutdown response: %w", err)
 	}
 
-	client.Socket.Close()
-	// ? Remove socket file on shutdown?
 	os.Exit(0)
-
 	return nil
 }
 

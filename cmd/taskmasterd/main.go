@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -10,7 +9,8 @@ import (
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
-	"github.com/mrlouf/taskmaster/internal/protocol"
+	"github.com/mrlouf/taskmaster/internal/server"
+	"github.com/mrlouf/taskmaster/internal/supervisor"
 )
 
 func main() {
@@ -22,57 +22,34 @@ func main() {
 
 func run() error {
 
-	config, err := config.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// * DEBUG
-	for name := range config.Programs {
-		fmt.Printf("Program '%s'\n", name)
-	}
-
-	socket, err := protocol.OpenSocket()
-	if err != nil {
-		return fmt.Errorf("failed to open socket: %w", err)
-	}
-	defer func() { // Clean up the socket file on exit
-		_ = socket.Close()
-		_ = os.Remove("/tmp/taskmaster.sock")
-	}()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		os.Remove("/tmp/taskmaster.sock")
-		os.Exit(1)
-	}()
-
-	// TODO: Add logging instead of printing to stdout
 	logger, err := logger.New()
 	if err != nil {
 		return fmt.Errorf("failed to initialise logger: %w", err)
 	}
 	defer logger.Close()
 
-	// TODO: Start the programs
-	// go supervisor.StartProgram(config)
-
-	for {
-
-		conn, err := socket.Accept()
-		if err != nil {
-			logger.Log(fmt.Sprintf("Failed to accept connection: %v", err))
-			continue
-		}
-
-		client := protocol.Client{
-			Socket: conn,
-			Dec:    json.NewDecoder(conn),
-			Enc:    json.NewEncoder(conn),
-		}
-
-		go protocol.HandleConnection(client, config, logger)
+	server, err := server.New(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("failed to initialise server: %w", err)
 	}
+	supervisor := supervisor.New(cfg, logger)
+
+	go supervisor.Start()
+
+	go server.Start()
+
+	// Handle graceful shutdown on SIGINT and SIGTERM
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	os.Remove("/tmp/taskmaster.sock")
+	os.Exit(1)
+
+	return nil
+
 }
