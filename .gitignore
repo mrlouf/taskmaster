@@ -11,6 +11,7 @@
 # ignore binaries but not folders
 /taskmasterd
 /taskmasterctl
+/taskmaster.log
 
 tmp
 .logs

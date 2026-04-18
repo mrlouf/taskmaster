@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 
 	"github.com/mrlouf/taskmaster/internal/config"
+	"github.com/mrlouf/taskmaster/internal/logger"
 )
 
 type Client struct {
@@ -40,7 +40,7 @@ func OpenSocket() (net.Listener, error) {
 	return socket, nil
 }
 
-func HandleConnection(client Client, config *config.Config) {
+func HandleConnection(client Client, config *config.Config, logger *logger.Logger) {
 
 	defer client.Socket.Close()
 
@@ -50,23 +50,23 @@ func HandleConnection(client Client, config *config.Config) {
 		if err := client.Dec.Decode(&req); err != nil {
 			// io.EOF = normal client disconnect, log other errors
 			if err != io.EOF {
-				log.Printf("read error: %v", err)
+				logger.Log(fmt.Sprintf("read error: %v", err))
 			}
 			return
 		}
 
-		err := handleRequest(client, req, config)
+		err := handleRequest(client, req, config, logger)
 
 		// * DEBUG
 		if err != nil {
-			log.Printf("handle request error: %v", err)
+			fmt.Printf("handle request error: %v\n", err)
 		} else {
-			log.Printf("handled request: %s %s", req.Cmd, req.Name)
+			fmt.Printf("handled request: %s %s\n", req.Cmd, req.Name)
 		}
 	}
 }
 
-func handleRequest(client Client, req Request, config *config.Config) error {
+func handleRequest(client Client, req Request, config *config.Config, logger *logger.Logger) error {
 
 	var err error
 
@@ -74,31 +74,31 @@ func handleRequest(client Client, req Request, config *config.Config) error {
 
 	case "start":
 
-		err = HandleStart(client, req.Name, config)
+		err = HandleStart(client, req.Name, config, logger)
 
 	case "stop":
 
-		err = HandleStop(client, req.Name, config)
+		err = HandleStop(client, req.Name, config, logger)
 
 	case "status":
 
-		err = HandleStatus(client, req.Name, config)
+		err = HandleStatus(client, req.Name, config, logger)
 
 	case "restart":
 
-		err = HandleRestart(client, req.Name, config)
+		err = HandleRestart(client, req.Name, config, logger)
 
 	case "reload":
 
-		err = HandleReload(client, config)
+		err = HandleReload(client, config, logger)
 
 	case "shutdown":
 
-		err = HandleShutdown(client, config)
+		err = HandleShutdown(client, config, logger)
 
 	case "healthcheck":
 
-		err = HandleHealthCheck(client, config)
+		err = HandleHealthCheck(client, config, logger)
 
 	default:
 		return fmt.Errorf("unknown command: %s", req.Cmd)
@@ -122,11 +122,11 @@ func RequestShutdown(c Client) error {
 	return nil
 }
 
-func HandleShutdown(client Client, config *config.Config) error {
+func HandleShutdown(client Client, config *config.Config, logger *logger.Logger) error {
 
 	// TODO: Add graceful shutdown logic here (stop all programs, clean up resources, etc.)
 	for name := range config.Programs {
-		fmt.Printf("Stopping program '%s'...\n", name)
+		logger.Log(fmt.Sprintf("Stopping program '%s'...", name))
 	}
 
 	var resp Response
@@ -168,7 +168,7 @@ func RequestStart(client Client, name string) error {
 	return nil
 }
 
-func HandleStart(client Client, name string, config *config.Config) error {
+func HandleStart(client Client, name string, config *config.Config, logger *logger.Logger) error {
 
 	var resp Response
 
@@ -179,7 +179,7 @@ func HandleStart(client Client, name string, config *config.Config) error {
 	} else {
 
 		// TODO: Implement start logic for the program
-		fmt.Printf("Starting program '%s' with command: %s\n", name, program.Command)
+		logger.Log(fmt.Sprintf("Starting program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = fmt.Sprintf("Program '%s' started successfully", name)
@@ -216,7 +216,7 @@ func RequestStop(client Client, name string) error {
 	return nil
 }
 
-func HandleStop(client Client, name string, config *config.Config) error {
+func HandleStop(client Client, name string, config *config.Config, logger *logger.Logger) error {
 
 	var resp Response
 
@@ -227,7 +227,7 @@ func HandleStop(client Client, name string, config *config.Config) error {
 	} else {
 
 		// TODO: Implement stop logic for the program
-		fmt.Printf("Stopping program '%s' with command: %s\n", name, program.Command)
+		logger.Log(fmt.Sprintf("Stopping program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
@@ -265,7 +265,7 @@ func RequestStatus(client Client, name string) error {
 	return nil
 }
 
-func HandleStatus(client Client, name string, config *config.Config) error {
+func HandleStatus(client Client, name string, config *config.Config, logger *logger.Logger) error {
 
 	var resp Response
 
@@ -276,7 +276,7 @@ func HandleStatus(client Client, name string, config *config.Config) error {
 	} else {
 
 		// TODO: Implement status logic for the program
-		fmt.Printf("Getting status of program '%s' with command: %s\n", name, program.Command)
+		logger.Log(fmt.Sprintf("Getting status of program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = fmt.Sprintf("Program '%s' is running", name)
@@ -313,7 +313,7 @@ func RequestRestart(client Client, name string) error {
 	return nil
 }
 
-func HandleRestart(client Client, name string, config *config.Config) error {
+func HandleRestart(client Client, name string, config *config.Config, logger *logger.Logger) error {
 
 	var resp Response
 
@@ -324,7 +324,7 @@ func HandleRestart(client Client, name string, config *config.Config) error {
 	} else {
 
 		// TODO: Implement restart logic for the program
-		fmt.Printf("Restarting program '%s' with command: %s\n", name, program.Command)
+		logger.Log(fmt.Sprintf("Restarting program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = fmt.Sprintf("Program '%s' restarted successfully", name)
@@ -361,10 +361,10 @@ func RequestReload(client Client) error {
 	return nil
 }
 
-func HandleReload(client Client, config *config.Config) error {
+func HandleReload(client Client, config *config.Config, logger *logger.Logger) error {
 
 	// TODO: Implement reload logic
-	fmt.Println("Reloading configuration...")
+	logger.Log("Reloading configuration...")
 
 	var resp Response
 	resp.Ok = true
@@ -400,7 +400,7 @@ func RequestHealthCheck(client Client) error {
 	return nil
 }
 
-func HandleHealthCheck(client Client, config *config.Config) error {
+func HandleHealthCheck(client Client, config *config.Config, logger *logger.Logger) error {
 
 	var resp Response
 	resp.Ok = true

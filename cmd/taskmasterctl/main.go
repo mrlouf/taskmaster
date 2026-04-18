@@ -108,6 +108,7 @@ func handleRequest(req protocol.Request, client protocol.Client) error {
 	case "help":
 
 		fmt.Println("Available commands: start, stop, status, restart, reload, shutdown, help, healthcheck, exit")
+		return nil
 
 	case "exit":
 
@@ -118,11 +119,8 @@ func handleRequest(req protocol.Request, client protocol.Client) error {
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
 
-	if err != nil {
-		return fmt.Errorf("failed to send %s command: %w", cmd, err)
-	}
+	return fmt.Errorf("failed to send %s command: %w", cmd, err)
 
-	return nil
 }
 
 func connectToSocket() (protocol.Client, error) {

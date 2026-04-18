@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
+	"github.com/mrlouf/taskmaster/internal/logger"
 	"github.com/mrlouf/taskmaster/internal/protocol"
 )
 
@@ -49,8 +50,11 @@ func run() error {
 	}()
 
 	// TODO: Add logging instead of printing to stdout
-
-	//	logger := log.New(logfile, "", 0666)
+	logger, err := logger.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialise logger: %w", err)
+	}
+	defer logger.Close()
 
 	// TODO: Start the programs
 	// go supervisor.StartProgram(config)
@@ -59,7 +63,7 @@ func run() error {
 
 		conn, err := socket.Accept()
 		if err != nil {
-			log.Printf("Failed to accept connection: %v", err)
+			logger.Log(fmt.Sprintf("Failed to accept connection: %v", err))
 			continue
 		}
 
@@ -69,6 +73,6 @@ func run() error {
 			Enc:    json.NewEncoder(conn),
 		}
 
-		go protocol.HandleConnection(client, config)
+		go protocol.HandleConnection(client, config, logger)
 	}
 }

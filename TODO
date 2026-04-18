@@ -1,9 +1,3 @@
-- Try testing leaks with valgrind and address sanitizer, especially for zombie processes.
-- Add a simple command-line interface for the controller to send commands to the daemon.
-- Add a security layer using file permissions to restrict access to the daemon.
+# Routines
 
-# daemon/controller communication protocol
-
-- Define a simple protocol for communication between the controller and the daemon over a Unix socket. This could be a JSON-based protocol where the controller sends commands like "start", "stop", "status", etc., along with the name of the program to manage. The daemon would respond with a status message indicating success or failure of the command.
-
-- Implement the daemon to listen to multiple controllers simultaneously, allowing for concurrent command processing. This would involve using goroutines to handle each incoming connection on the Unix socket.
+- On start, the daemon should read the configuration file and start all programs marked as "autostart" automatically.
