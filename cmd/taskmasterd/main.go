@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -61,6 +62,12 @@ func run() error {
 			continue
 		}
 
-		go protocol.HandleConnection(conn, config)
+		client := protocol.Client{
+			Socket: conn,
+			Dec:    json.NewDecoder(conn),
+			Enc:    json.NewEncoder(conn),
+		}
+
+		go protocol.HandleConnection(client, config)
 	}
 }

@@ -40,17 +40,14 @@ func OpenSocket() (net.Listener, error) {
 	return socket, nil
 }
 
-func HandleConnection(conn net.Conn, config *config.Config) {
+func HandleConnection(client Client, config *config.Config) {
 
-	defer conn.Close()
-
-	enc := json.NewEncoder(conn)
-	dec := json.NewDecoder(conn)
+	defer client.Socket.Close()
 
 	for {
 
 		var req Request
-		if err := dec.Decode(&req); err != nil {
+		if err := client.Dec.Decode(&req); err != nil {
 			// io.EOF = ctl s'est déconnecté proprement, pas une erreur
 			if err != io.EOF {
 				log.Printf("read error: %v", err)
@@ -58,23 +55,18 @@ func HandleConnection(conn net.Conn, config *config.Config) {
 			return
 		}
 
-		resp := handleRequest(conn, req, config)
+		err := handleRequest(client, req, config)
 
-		if err := enc.Encode(resp); err != nil {
-			log.Printf("write error: %v", err)
-			return
-		}
-
-		if resp != nil {
-			log.Printf("Handled request: %s %s - Response: %v", req.Cmd, req.Name, resp)
+		// * DEBUG
+		if err != nil {
+			log.Printf("handle request error: %v", err)
 		} else {
-			log.Printf("Handled request: %s %s - No response", req.Cmd, req.Name)
+			log.Printf("handled request: %s %s", req.Cmd, req.Name)
 		}
-
 	}
 }
 
-func handleRequest(conn net.Conn, req Request, config *config.Config) error {
+func handleRequest(client Client, req Request, config *config.Config) error {
 
 	var err error
 
@@ -82,27 +74,31 @@ func handleRequest(conn net.Conn, req Request, config *config.Config) error {
 
 	case "start":
 
-		err = HandleStart(conn, req.Name, config)
+		err = HandleStart(client, req.Name, config)
 
 	case "stop":
 
-		err = HandleStop(conn, req.Name, config)
+		err = HandleStop(client, req.Name, config)
 
 	case "status":
 
-		err = HandleStatus(conn, req.Name, config)
+		err = HandleStatus(client, req.Name, config)
 
 	case "restart":
 
-		err = HandleRestart(conn, req.Name, config)
+		err = HandleRestart(client, req.Name, config)
 
 	case "reload":
 
-		err = HandleReload(conn, config)
+		err = HandleReload(client, config)
 
 	case "shutdown":
 
-		err = HandleShutdown(conn, config)
+		err = HandleShutdown(client, config)
+
+	case "healthcheck":
+
+		err = HandleHealthCheck(client, config)
 
 	default:
 		return fmt.Errorf("unknown command: %s", req.Cmd)
@@ -111,28 +107,38 @@ func handleRequest(conn net.Conn, req Request, config *config.Config) error {
 	return err
 }
 
-func RequestShutdown(client Client) error {
-	_, err := client.Socket.Write([]byte(`{"cmd":"shutdown"}`))
-	if err != nil {
-		return fmt.Errorf("failed to send shutdown request: %w", err)
-	}
+func RequestShutdown(c Client) error {
 
+	var req Request
+	req.Cmd = "shutdown"
+
+	if err := c.Enc.Encode(req); err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+	var resp Response
+	if err := c.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("recv: %w", err)
+	}
 	return nil
 }
 
-func HandleShutdown(conn net.Conn, config *config.Config) error {
+func HandleShutdown(client Client, config *config.Config) error {
 
 	// TODO: Add graceful shutdown logic here (stop all programs, clean up resources, etc.)
 	for name := range config.Programs {
 		fmt.Printf("Stopping program '%s'...\n", name)
 	}
 
-	_, err := conn.Write([]byte(`{"ok": true, "msg": "Shutting down daemon..."}`))
-	if err != nil {
+	var resp Response
+	resp.Ok = true
+	resp.Msg = "Taskmaster is shutting down"
+
+	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send shutdown response: %w", err)
 	}
 
-	conn.Close()
+	client.Socket.Close()
+	// ? Remove socket file on shutdown?
 	os.Exit(0)
 
 	return nil
@@ -140,19 +146,29 @@ func HandleShutdown(conn net.Conn, config *config.Config) error {
 
 func RequestStart(client Client, name string) error {
 
-	if name == "" {
-		return fmt.Errorf("program name is required for start command")
-	}
+	var req Request
+	req.Cmd = "start"
+	req.Name = name
 
-	_, err := client.Socket.Write([]byte(fmt.Sprintf(`{"cmd":"start","name":"%s"}`, name)))
-	if err != nil {
+	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send start request: %w", err)
 	}
+
+	var resp Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("failed to receive start response: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("start command failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Successful start: %s\n", resp.Msg)
 
 	return nil
 }
 
-func HandleStart(conn net.Conn, name string, config *config.Config) error {
+func HandleStart(client Client, name string, config *config.Config) error {
 
 	program, exists := config.Programs[name]
 	if !exists {
@@ -162,29 +178,34 @@ func HandleStart(conn net.Conn, name string, config *config.Config) error {
 	// TODO: Implement start logic for the program
 	fmt.Printf("Starting program '%s' with command: %s\n", name, program.Command)
 
-	_, err := conn.Write([]byte(fmt.Sprintf(`{"ok": true, "msg": "Program '%s' started successfully"}`, name)))
-	if err != nil {
-		return fmt.Errorf("failed to send start response: %w", err)
-	}
-
 	return nil
 }
 
 func RequestStop(client Client, name string) error {
 
-	if name == "" {
-		return fmt.Errorf("program name is required for stop command")
-	}
+	var req Request
+	req.Cmd = "stop"
+	req.Name = name
 
-	_, err := client.Socket.Write([]byte(fmt.Sprintf(`{"cmd":"stop","name":"%s"}`, name)))
-	if err != nil {
+	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send stop request: %w", err)
 	}
+
+	var resp Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("failed to receive stop response: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("stop command failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Successful stop: %s\n", resp.Msg)
 
 	return nil
 }
 
-func HandleStop(conn net.Conn, name string, config *config.Config) error {
+func HandleStop(client Client, name string, config *config.Config) error {
 
 	program, exists := config.Programs[name]
 	if !exists {
@@ -194,8 +215,11 @@ func HandleStop(conn net.Conn, name string, config *config.Config) error {
 	// TODO: Implement stop logic for the program
 	fmt.Printf("Stopping program '%s' with command: %s\n", name, program.Command)
 
-	_, err := conn.Write([]byte(fmt.Sprintf(`{"ok": true, "msg": "Program '%s' stopped successfully"}`, name)))
-	if err != nil {
+	var resp Response
+	resp.Ok = true
+	resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
+
+	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send stop response: %w", err)
 	}
 
@@ -204,19 +228,29 @@ func HandleStop(conn net.Conn, name string, config *config.Config) error {
 
 func RequestStatus(client Client, name string) error {
 
-	if name == "" {
-		return fmt.Errorf("program name is required for status command")
-	}
+	var req Request
+	req.Cmd = "status"
+	req.Name = name
 
-	_, err := client.Socket.Write([]byte(fmt.Sprintf(`{"cmd":"status","name":"%s"}`, name)))
-	if err != nil {
+	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send status request: %w", err)
 	}
+
+	var resp Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("failed to receive status response: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("status command failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Status of program '%s': %s\n", name, resp.Msg)
 
 	return nil
 }
 
-func HandleStatus(conn net.Conn, name string, config *config.Config) error {
+func HandleStatus(client Client, name string, config *config.Config) error {
 
 	program, exists := config.Programs[name]
 	if !exists {
@@ -226,8 +260,11 @@ func HandleStatus(conn net.Conn, name string, config *config.Config) error {
 	// TODO: Implement status logic for the program
 	fmt.Printf("Getting status of program '%s' with command: %s\n", name, program.Command)
 
-	_, err := conn.Write([]byte(fmt.Sprintf(`{"ok": true, "msg": "Program '%s' is running"}`, name)))
-	if err != nil {
+	var resp Response
+	resp.Ok = true
+	resp.Msg = fmt.Sprintf("Program '%s' is running", name)
+
+	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send status response: %w", err)
 	}
 
@@ -236,30 +273,47 @@ func HandleStatus(conn net.Conn, name string, config *config.Config) error {
 
 func RequestRestart(client Client, name string) error {
 
-	if name == "" {
-		return fmt.Errorf("program name is required for restart command")
-	}
+	var req Request
+	req.Cmd = "restart"
+	req.Name = name
 
-	_, err := client.Socket.Write([]byte(fmt.Sprintf(`{"cmd":"restart","name":"%s"}`, name)))
-	if err != nil {
+	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send restart request: %w", err)
 	}
+
+	var resp Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("failed to receive restart response: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("restart command failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Successful restart: %s\n", resp.Msg)
 
 	return nil
 }
 
-func HandleRestart(conn net.Conn, name string, config *config.Config) error {
+func HandleRestart(client Client, name string, config *config.Config) error {
+
+	var resp Response
 
 	program, exists := config.Programs[name]
 	if !exists {
-		return fmt.Errorf("program not found: %s", name)
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+	} else {
+
+		// TODO: Implement restart logic for the program
+		fmt.Printf("Restarting program '%s' with command: %s\n", name, program.Command)
+
+		resp.Ok = true
+		resp.Msg = fmt.Sprintf("Program '%s' restarted successfully", name)
+
 	}
 
-	// TODO: Implement restart logic for the program
-	fmt.Printf("Restarting program '%s' with command: %s\n", name, program.Command)
-
-	_, err := conn.Write([]byte(fmt.Sprintf(`{"ok": true, "msg": "Program '%s' restarted successfully"}`, name)))
-	if err != nil {
+	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send restart response: %w", err)
 	}
 
@@ -268,22 +322,74 @@ func HandleRestart(conn net.Conn, name string, config *config.Config) error {
 
 func RequestReload(client Client) error {
 
-	_, err := client.Socket.Write([]byte(`{"cmd":"reload"}`))
-	if err != nil {
+	var req Request
+	req.Cmd = "reload"
+
+	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send reload request: %w", err)
+	}
+
+	var resp Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("failed to receive reload response: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("reload command failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Successful reload: %s\n", resp.Msg)
+
+	return nil
+}
+
+func HandleReload(client Client, config *config.Config) error {
+
+	// TODO: Implement reload logic
+	fmt.Println("Reloading configuration...")
+
+	var resp Response
+	resp.Ok = true
+	resp.Msg = "Configuration reloaded successfully"
+
+	if err := client.Enc.Encode(resp); err != nil {
+		return fmt.Errorf("failed to send reload response: %w", err)
 	}
 
 	return nil
 }
 
-func HandleReload(conn net.Conn, config *config.Config) error {
+func RequestHealthCheck(client Client) error {
 
-	// TODO: Implement reload logic
-	fmt.Println("Reloading configuration...")
+	var req Request
+	req.Cmd = "healthcheck"
 
-	_, err := conn.Write([]byte(`{"ok": true, "msg": "Configuration reloaded successfully"}`))
-	if err != nil {
-		return fmt.Errorf("failed to send reload response: %w", err)
+	if err := client.Enc.Encode(req); err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+
+	var resp Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("recv: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("healthcheck failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Healthcheck successful: %s\n", resp.Msg)
+
+	return nil
+}
+
+func HandleHealthCheck(client Client, config *config.Config) error {
+
+	var resp Response
+	resp.Ok = true
+	resp.Msg = "Daemon is healthy"
+
+	if err := client.Enc.Encode(resp); err != nil {
+		return fmt.Errorf("failed to send healthcheck response: %w", err)
 	}
 
 	return nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -23,18 +24,29 @@ func gracefulExit(rl *readline.Instance) {
 	os.Exit(0)
 }
 
-func handleCommand(line string, client protocol.Client) error {
+func parseCommand(line string) (protocol.Request, error) {
 
-	cmd := strings.Split(line, " ")[0]
-
-	name := ""
-	len := len(strings.Split(line, " "))
-	if len > 1 {
-		name = strings.Split(line, " ")[1]
-		if len > 2 {
-			return fmt.Errorf("Multiple arguments are not supported (yet)")
-		}
+	parts := strings.Split(strings.TrimSpace(line), " ")
+	if len(parts) == 0 {
+		return protocol.Request{}, fmt.Errorf("invalid command")
 	}
+
+	req := protocol.Request{
+		Cmd: parts[0],
+	}
+
+	if len(parts) > 1 {
+		req.Name = parts[1]
+	}
+
+	return req, nil
+
+}
+
+func handleRequest(req protocol.Request, client protocol.Client) error {
+
+	cmd := req.Cmd
+	name := req.Name
 
 	var err error
 
@@ -42,31 +54,35 @@ func handleCommand(line string, client protocol.Client) error {
 
 	case "start":
 
-		err = protocol.RequestStart(client, name)
+		return protocol.RequestStart(client, name)
 
 	case "stop":
 
-		err = protocol.RequestStop(client, name)
+		return protocol.RequestStop(client, name)
 
 	case "status":
 
-		err = protocol.RequestStatus(client, name)
+		return protocol.RequestStatus(client, name)
 
 	case "restart":
 
-		err = protocol.RequestRestart(client, name)
+		return protocol.RequestRestart(client, name)
 
 	case "reload":
 
-		err = protocol.RequestReload(client)
+		return protocol.RequestReload(client)
 
 	case "shutdown":
 
-		err = protocol.RequestShutdown(client)
+		return protocol.RequestShutdown(client)
+
+	case "healthcheck":
+
+		return protocol.RequestHealthCheck(client)
 
 	case "help":
 
-		fmt.Println("Available commands: start, stop, status, restart, reload, shutdown, help")
+		fmt.Println("Available commands: start, stop, status, restart, reload, shutdown, help, healthcheck, exit")
 
 	case "exit":
 
@@ -103,7 +119,11 @@ func connectToSocket() (protocol.Client, error) {
 			}
 		}
 	}
+
 	c.Socket = socket
+	c.Dec = json.NewDecoder(socket)
+	c.Enc = json.NewEncoder(socket)
+
 	return c, nil
 }
 
@@ -119,6 +139,7 @@ func run() error {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
+		fmt.Println("Goodbye!")
 		gracefulExit(rl)
 	}()
 
@@ -127,28 +148,24 @@ func run() error {
 		return fmt.Errorf("failed to connect to socket: %w", err)
 	}
 
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := client.Socket.Read(buf)
-			if err != nil {
-				log.Printf("Failed to read from socket: %v", err)
-				return
-			}
-			fmt.Printf("Received response: %s", string(buf[:n]))
-
-		}
-	}()
-
 	for {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
+			fmt.Println("Goodbye!")
 			gracefulExit(rl)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to read line: %w", err)
 		}
-		err = handleCommand(line, client)
+
+		req, err := parseCommand(line)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+
+		err = handleRequest(req, client)
+
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		}
