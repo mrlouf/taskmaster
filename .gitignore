@@ -8,6 +8,14 @@
 *.so
 *.dylib
 
+# ignore binaries but not folders
+/taskmasterd
+/taskmasterctl
+/taskmaster.log
+
+tmp
+.logs
+
 # Test binary, built with `go test -c`
 *.test
 

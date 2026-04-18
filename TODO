@@ -1,0 +1,3 @@
+# Routines
+
+- On start, the daemon should read the configuration file and start all programs marked as "autostart" automatically.
