@@ -59,6 +59,8 @@ func parseCommand(line string) (protocol.Request, error) {
 
 		if req.Name == "" {
 			return protocol.Request{}, fmt.Errorf("Error: command '%s' requires a program name", req.Cmd)
+		} else if len(parts) > 2 {
+			fmt.Printf("Warning: Command '%s' does not handle multiple arguments, ignoring extra input\n", req.Cmd)
 		}
 	}
 
