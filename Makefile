@@ -22,6 +22,7 @@ clean:
 	rm -f /tmp/taskmaster.sock
 	rm -rf ./tmp
 	rm -rf ./.logs
+	rm -f taskmaster.log
 
 re: clean all
 

@@ -13,11 +13,17 @@ import (
 	"github.com/mrlouf/taskmaster/internal/supervisor"
 )
 
-func main() {
-	// Try and catch equivalent in Go
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+func waitForSignals(supervisor *supervisor.Supervisor) {
+
+	// Handle graceful shutdown on SIGINT and SIGTERM
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	supervisor.Logger.Log("Received shutdown signal, exiting...")
+	// supervisor.Shutdown() // TODO
+	os.Remove("/tmp/taskmaster.sock")
+	os.Exit(0)
+
 }
 
 func run() error {
@@ -33,23 +39,26 @@ func run() error {
 	}
 	defer logger.Close()
 
-	server, err := server.New(cfg, logger)
+	supervisor := supervisor.New(cfg, logger)
+
+	server, err := server.New(cfg, logger, supervisor)
 	if err != nil {
 		return fmt.Errorf("failed to initialise server: %w", err)
 	}
-	supervisor := supervisor.New(cfg, logger)
 
 	go supervisor.Start()
 
 	go server.Start()
 
-	// Handle graceful shutdown on SIGINT and SIGTERM
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	<-c
-	os.Remove("/tmp/taskmaster.sock")
-	os.Exit(1)
+	waitForSignals(supervisor)
 
 	return nil
 
+}
+
+func main() {
+	// Try and catch equivalent in Go
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
 }
