@@ -4,17 +4,19 @@ A process manager for Linux based on [supervisor](https://supervisord.org/index.
 
 ## Description
 
-This project is a process manager for Linux using a daemon and a controller.
+This project is a job controller for Linux using a daemon/controller architecture.
 
 The daemon is responsible for starting, monitoring and stopping the processes defined in a configuration file. It also listens for commands from the controller, executes and report back the results.
 
-The controller is a command-line tool that allows the user to send commands to the daemon to manage the processes.
+The controller is a CLI tool that allows the user to send commands to the daemon to manage the processes.
 
 The configuration file is a declarative YAML file that defines the processes to be started and their parameters (command, environment variables, working directory, etc.). The daemon reads this configuration file at startup and manages the processes accordingly.
 
 ## Features
 
-The daemon and the controller are communicating over a Unix socket using a simple JSON-based protocol. The daemon accepts connections from multiple controllers and handles their requests concurrently. The supported commands are:
+The daemon and the controller are communicating over a Unix socket using a simple JSON-based protocol. The daemon accepts connections from multiple controllers and handles their requests concurrently with goroutines.
+
+The supported commands are:
 
 - `start <program>`: Start a program defined in the configuration file
 - `stop <program>`: Stop a running program
@@ -24,6 +26,10 @@ The daemon and the controller are communicating over a Unix socket using a simpl
 - `reload`: Reload the configuration file and apply any changes to the managed processes
 - `exit`: Stop the daemon gracefully
 - `help`: Display a help message with the list of available commands
+
+## Logs
+
+The daemon logs the output of the managed requests from the controller into a log file with a timestamp for clarity.
 
 ### Development tools
 
