@@ -1,3 +1,10 @@
 # Routines
 
 - On start, the daemon should read the configuration file and start all programs marked as "autostart" automatically.
+
+- Implement the supervisor state flow:
+
+STOPPED → STARTING → RUNNING → EXITED  (exit attendu)
+                   ↘ BACKOFF            (mort pendant starttime)
+                              ↘ FATAL   (trop de retries)
+          RUNNING  → STOPPING → STOPPED (stop manuel)
