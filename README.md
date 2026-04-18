@@ -14,7 +14,16 @@ The configuration file is a declarative YAML file that defines the processes to 
 
 ## Features
 
-The daemon and the controller are communicating over a Unix socket using a simple JSON-based protocol.
+The daemon and the controller are communicating over a Unix socket using a simple JSON-based protocol. The daemon accepts connections from multiple controllers and handles their requests concurrently. The supported commands are:
+
+- `start <program>`: Start a program defined in the configuration file
+- `stop <program>`: Stop a running program
+- `restart <program>`: Restart a running program
+- `status <program>`: Get the status of a program (running, stopped, etc.)
+- `healthcheck`: Check if the daemon is running and responsive
+- `reload`: Reload the configuration file and apply any changes to the managed processes
+- `exit`: Stop the daemon gracefully
+- `help`: Display a help message with the list of available commands
 
 ### Development tools
 

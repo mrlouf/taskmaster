@@ -21,6 +21,7 @@ clean:
 	rm -f $(DAEMON) $(CONTROLLER)
 	rm -f /tmp/taskmaster.sock
 	rm -rf ./tmp
+	rm -rf ./.logs
 
 re: clean all
 

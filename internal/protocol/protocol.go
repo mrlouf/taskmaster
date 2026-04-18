@@ -48,7 +48,7 @@ func HandleConnection(client Client, config *config.Config) {
 
 		var req Request
 		if err := client.Dec.Decode(&req); err != nil {
-			// io.EOF = ctl s'est déconnecté proprement, pas une erreur
+			// io.EOF = normal client disconnect, log other errors
 			if err != io.EOF {
 				log.Printf("read error: %v", err)
 			}
@@ -170,13 +170,24 @@ func RequestStart(client Client, name string) error {
 
 func HandleStart(client Client, name string, config *config.Config) error {
 
+	var resp Response
+
 	program, exists := config.Programs[name]
 	if !exists {
-		return fmt.Errorf("program not found: %s", name)
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+	} else {
+
+		// TODO: Implement start logic for the program
+		fmt.Printf("Starting program '%s' with command: %s\n", name, program.Command)
+
+		resp.Ok = true
+		resp.Msg = fmt.Sprintf("Program '%s' started successfully", name)
 	}
 
-	// TODO: Implement start logic for the program
-	fmt.Printf("Starting program '%s' with command: %s\n", name, program.Command)
+	if err := client.Enc.Encode(resp); err != nil {
+		return fmt.Errorf("failed to send start response: %w", err)
+	}
 
 	return nil
 }
@@ -207,23 +218,27 @@ func RequestStop(client Client, name string) error {
 
 func HandleStop(client Client, name string, config *config.Config) error {
 
+	var resp Response
+
 	program, exists := config.Programs[name]
 	if !exists {
-		return fmt.Errorf("program not found: %s", name)
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+	} else {
+
+		// TODO: Implement stop logic for the program
+		fmt.Printf("Stopping program '%s' with command: %s\n", name, program.Command)
+
+		resp.Ok = true
+		resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
 	}
-
-	// TODO: Implement stop logic for the program
-	fmt.Printf("Stopping program '%s' with command: %s\n", name, program.Command)
-
-	var resp Response
-	resp.Ok = true
-	resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send stop response: %w", err)
 	}
 
 	return nil
+
 }
 
 func RequestStatus(client Client, name string) error {
@@ -252,17 +267,20 @@ func RequestStatus(client Client, name string) error {
 
 func HandleStatus(client Client, name string, config *config.Config) error {
 
+	var resp Response
+
 	program, exists := config.Programs[name]
 	if !exists {
-		return fmt.Errorf("program not found: %s", name)
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+	} else {
+
+		// TODO: Implement status logic for the program
+		fmt.Printf("Getting status of program '%s' with command: %s\n", name, program.Command)
+
+		resp.Ok = true
+		resp.Msg = fmt.Sprintf("Program '%s' is running", name)
 	}
-
-	// TODO: Implement status logic for the program
-	fmt.Printf("Getting status of program '%s' with command: %s\n", name, program.Command)
-
-	var resp Response
-	resp.Ok = true
-	resp.Msg = fmt.Sprintf("Program '%s' is running", name)
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send status response: %w", err)
