@@ -12,7 +12,7 @@ import (
 
 	"github.com/chzyer/readline"
 
-	"github.com/mrlouf/taskmaster/internal/protocol/handlers"
+	"github.com/mrlouf/taskmaster/internal/protocol"
 )
 
 func gracefulExit(rl *readline.Instance) {
@@ -23,7 +23,7 @@ func gracefulExit(rl *readline.Instance) {
 	os.Exit(0)
 }
 
-func handleCommand(line string, socket net.Conn) error {
+func handleCommand(line string, client protocol.Client) error {
 
 	cmd := strings.Split(line, " ")[0]
 
@@ -42,27 +42,27 @@ func handleCommand(line string, socket net.Conn) error {
 
 	case "start":
 
-		err = handlers.RequestStart(socket, name)
+		err = protocol.RequestStart(client, name)
 
 	case "stop":
 
-		err = handlers.RequestStop(socket, name)
+		err = protocol.RequestStop(client, name)
 
 	case "status":
 
-		err = handlers.RequestStatus(socket, name)
+		err = protocol.RequestStatus(client, name)
 
 	case "restart":
 
-		err = handlers.RequestRestart(socket, name)
+		err = protocol.RequestRestart(client, name)
 
 	case "reload":
 
-		err = handlers.RequestReload(socket)
+		err = protocol.RequestReload(client)
 
 	case "shutdown":
 
-		err = handlers.RequestShutdown(socket)
+		err = protocol.RequestShutdown(client)
 
 	case "help":
 
@@ -84,6 +84,26 @@ func handleCommand(line string, socket net.Conn) error {
 	return nil
 }
 
+func connectToSocket(c *protocol.Client) (protocol.Client, error) {
+
+	socket, err := net.Dial("unix", "/tmp/taskmaster.sock")
+	if err != nil {
+		count := 0
+		for {
+			time.Sleep(1 * time.Second)
+			socket, err = net.Dial("unix", "/tmp/taskmaster.sock")
+			if err == nil {
+				return protocol.Client{Socket: socket}, nil
+			}
+			count++
+			if count >= 5 {
+				return protocol.Client{}, fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
+			}
+		}
+	}
+	return protocol.Client{Socket: socket}, nil
+}
+
 func run() error {
 
 	rl, err := readline.New("taskmasterctl> ")
@@ -99,27 +119,16 @@ func run() error {
 		gracefulExit(rl)
 	}()
 
-	socket, err := net.Dial("unix", "/tmp/taskmaster.sock")
+	client := protocol.Client{}
+	_, err = connectToSocket(&client)
 	if err != nil {
-		count := 0
-		for {
-			time.Sleep(1 * time.Second)
-			socket, err = net.Dial("unix", "/tmp/taskmaster.sock")
-			if err == nil {
-				break
-			}
-			count++
-			if count >= 5 {
-				return fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
-			}
-		}
+		return fmt.Errorf("failed to connect to socket: %w", err)
 	}
-	defer socket.Close()
 
 	go func() {
 		buf := make([]byte, 1024)
 		for {
-			n, err := socket.Read(buf)
+			n, err := client.Socket.Read(buf)
 			if err != nil {
 				log.Printf("Failed to read from socket: %v", err)
 				return
@@ -136,7 +145,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("failed to read line: %w", err)
 		}
-		err = handleCommand(line, socket)
+		err = handleCommand(line, client)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		}

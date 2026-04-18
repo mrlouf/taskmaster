@@ -48,10 +48,13 @@ func run() error {
 	}()
 
 	// TODO: Add logging instead of printing to stdout
+	// logger := logger.New("./.logs/taskmaster.log")
 
 	// TODO: Start the programs
+	// go supervisor.StartProgram(config)
 
 	for {
+
 		conn, err := socket.Accept()
 		if err != nil {
 			log.Printf("Failed to accept connection: %v", err)
