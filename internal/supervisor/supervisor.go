@@ -99,6 +99,9 @@ func (s *Supervisor) autoStartProcesses() {
 
 	for name, program := range s.Config.Programs {
 
+		process := &Process{Name: name, Config: &program}
+		s.Processes[name] = process
+
 		if program.AutoStart {
 			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
 			err := s.startProcess(name)
@@ -281,18 +284,6 @@ func (s *Supervisor) stopProcess(name string) error {
 func (s *Supervisor) Start() {
 
 	s.autoStartProcesses()
-
-	/* 	go func() {
-
-		for {
-			fmt.Println("Active processes in supervisor:")
-			for name, process := range s.Processes {
-
-				fmt.Printf("- %s: PID %d, State %d\n", name, process.pid, process.state)
-			}
-			time.Sleep(2 * time.Second)
-		}
-	}() */
 
 	for event := range s.Events {
 		switch event.Kind {

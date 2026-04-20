@@ -6,7 +6,7 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = []
+  args_bin = ["-c", "./conf/taskmaster.conf"]
   bin = "./taskmasterd"
   cmd = "go build -o ./taskmasterd ./cmd/taskmasterd"
   delay = 1000
