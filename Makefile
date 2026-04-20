@@ -24,12 +24,14 @@ clean:
 	rm -rf ./.logs
 	rm -f taskmaster.log
 
+log:
+	rm -f taskmaster.log
+
 re: clean all
 
 # First kill any running process of the daemon and controller, then
 # start daemon in background and controller in foreground with Air for live reloading.
 # Logs are saved in the .logs directory.
-
 dev: pkill
 	@mkdir -pv ./.logs
 	air -c .air.daemon.toml &> ./.logs/daemon.log &
