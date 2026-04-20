@@ -14,6 +14,7 @@ import (
 	"github.com/chzyer/readline"
 
 	"github.com/mrlouf/taskmaster/internal/protocol"
+	"github.com/mrlouf/taskmaster/internal/server"
 )
 
 func gracefulExit(rl *readline.Instance) {
@@ -68,7 +69,7 @@ func parseCommand(line string) (protocol.Request, error) {
 
 }
 
-func handleRequest(req protocol.Request, client protocol.Client) error {
+func handleRequest(req protocol.Request, client server.Client) error {
 
 	cmd := req.Cmd
 	name := req.Name
@@ -79,31 +80,31 @@ func handleRequest(req protocol.Request, client protocol.Client) error {
 
 	case "start":
 
-		return protocol.RequestStart(client, name)
+		return server.RequestStart(client, name)
 
 	case "stop":
 
-		return protocol.RequestStop(client, name)
+		return server.RequestStop(client, name)
 
 	case "status":
 
-		return protocol.RequestStatus(client, name)
+		return server.RequestStatus(client, name)
 
 	case "restart":
 
-		return protocol.RequestRestart(client, name)
+		return server.RequestRestart(client, name)
 
 	case "reload":
 
-		return protocol.RequestReload(client)
+		return server.RequestReload(client)
 
 	case "shutdown":
 
-		return protocol.RequestShutdown(client)
+		return server.RequestShutdown(client)
 
 	case "healthcheck":
 
-		return protocol.RequestHealthCheck(client)
+		return server.RequestHealthCheck(client)
 
 	case "help":
 
@@ -123,9 +124,9 @@ func handleRequest(req protocol.Request, client protocol.Client) error {
 
 }
 
-func connectToSocket() (protocol.Client, error) {
+func connectToSocket() (server.Client, error) {
 
-	var c protocol.Client
+	var c server.Client
 
 	socket, err := net.Dial("unix", "/tmp/taskmaster.sock")
 	if err != nil {
@@ -184,14 +185,14 @@ func run() error {
 
 		req, err := parseCommand(line)
 		if err != nil {
-			fmt.Printf("%v\n", err)
+			fmt.Printf("Error: %v\n", err)
 			continue
 		}
 
 		err = handleRequest(req, client)
 
 		if err != nil {
-			fmt.Printf("Error handling request: %v\n", err)
+			fmt.Printf("Error: %v\n", err)
 		}
 	}
 }

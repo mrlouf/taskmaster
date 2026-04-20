@@ -47,27 +47,49 @@ type Config struct {
 	Programs map[string]Program `yaml:"programs"`
 }
 
-func LoadConfig() (*Config, error) {
+func getConfFile() string {
 
-	_, err := os.Stat("./taskmaster.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat config file: %w", err)
+	if len(os.Args) <= 1 {
+		return "./taskmaster.conf"
 	}
 
-	file, err := os.ReadFile("./taskmaster.yaml")
+	for i, arg := range os.Args {
+		if arg == "-c" || arg == "--config" {
+			if i+1 < len(os.Args) {
+				return os.Args[i+1]
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s flag requires a value\n", arg)
+				os.Exit(1)
+			}
+		}
+	}
+	return "./taskmaster.conf"
+
+}
+
+func LoadConfig() (*Config, error) {
+
+	conf_file := getConfFile()
+
+	_, err := os.Stat(conf_file)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+	}
+
+	file, err := os.ReadFile(conf_file)
+	if err != nil {
+		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
 	}
 
 	var cfg Config
 	err = yaml.Unmarshal(file, &cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config file: %w", err)
+		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
 	}
 
 	err = cfg.validate()
 	if err != nil {
-		return nil, fmt.Errorf("failed to validate config: %w", err)
+		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
 	}
 
 	return &cfg, nil
