@@ -34,13 +34,13 @@ re: clean all
 # Logs are saved in the .logs directory.
 dev: pkill
 	@mkdir -pv ./.logs
-	air -c .air.daemon.toml &> ./.logs/daemon.log &
+	air -c ./air/.air.daemon.toml &> ./.logs/daemon.log &
 	@sleep 1 # wait for the daemon to start
-	air -c .air.controller.toml &> ./.logs/controller.log
+	air -c ./air/.air.controller.toml &> ./.logs/controller.log
 
 pkill:
-	-@pkill -f "air -c .air.daemon.toml" &>/dev/null || true
-	-@pkill -f "air -c .air.controller.toml" &>/dev/null || true
+	-@pkill -f "air -c ./air/.air.daemon.toml" &>/dev/null || true
+	-@pkill -f "air -c ./air/.air.controller.toml" &>/dev/null || true
 	-@pkill -f $(DAEMON) &>/dev/null || true
 	-@pkill -f $(CONTROLLER) &>/dev/null || true
 	rm -f /tmp/taskmaster.sock
