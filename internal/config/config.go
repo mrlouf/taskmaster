@@ -47,14 +47,36 @@ type Config struct {
 	Programs map[string]Program `yaml:"programs"`
 }
 
+func getConfFile() string {
+
+	if len(os.Args) <= 1 {
+		return ""
+	}
+
+	for i, arg := range os.Args {
+		if arg == "-c" || arg == "--config" {
+			if i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+	}
+	return ""
+
+}
+
 func LoadConfig() (*Config, error) {
 
-	_, err := os.Stat("./taskmaster.yaml")
+	conf_file := getConfFile()
+	if conf_file == "" {
+		conf_file = "./taskmaster.conf"
+	}
+
+	_, err := os.Stat(conf_file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat config file: %w", err)
 	}
 
-	file, err := os.ReadFile("./taskmaster.yaml")
+	file, err := os.ReadFile(conf_file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}

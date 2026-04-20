@@ -2,10 +2,12 @@ package supervisor
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
+	// SignalNum()
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -43,6 +45,25 @@ const (
 	Exited
 	Fatal
 )
+
+func (s State) String() string {
+	switch s {
+	case Stopped:
+		return "Stopped"
+	case Starting:
+		return "Starting"
+	case Running:
+		return "Running"
+	case Stopping:
+		return "Stopping"
+	case Exited:
+		return "Exited"
+	case Fatal:
+		return "Fatal"
+	default:
+		return "Unknown"
+	}
+}
 
 type Process struct {
 	Name   string
@@ -100,22 +121,44 @@ func (s *Supervisor) handleShutdown() {
 
 }
 
-func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
+func (s *Supervisor) GetStatus(name string) string {
 
-	go func() {
-		time.Sleep(time.Second * time.Duration(cfg.StartTime))
-		s.Events <- Event{Kind: EventProcessReady, Name: process.Name}
-	}()
-
-	err := process.cmd.Wait()
-	process.done <- err
-
-	if err != nil {
-		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d exited with error: %v", process.Name, process.pid, err))
-	} else {
-		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d exited successfully", process.Name, process.pid))
+	process, exists := s.Processes[name]
+	if !exists {
+		return fmt.Sprintf("Program '%s' not found", name)
 	}
 
+	return fmt.Sprintf("Program '%s' is in state %s with PID %d", name, process.state, process.pid)
+
+}
+
+func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
+	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
+
+	// channel qui reçoit la mort du process
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- process.cmd.Wait()
+	}()
+
+	// phase STARTING — on attend soit la mort soit le starttime
+	select {
+	case err := <-waitDone:
+		// mort pendant STARTING → BACKOFF
+		startTimer.Stop()
+		process.done <- err
+		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+		return
+
+	case <-startTimer.C:
+		// a survécu assez longtemps → RUNNING
+		s.Events <- Event{Kind: EventProcessReady, Name: process.Name}
+	}
+
+	// phase RUNNING — on attend juste la mort
+	err := <-waitDone
+	process.done <- err
+	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 }
 
 // Helper function to convert env map to slice of "KEY=VALUE" strings
@@ -123,8 +166,8 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 func convertEnvMapToSlice(envMap map[string]string) []string {
 
 	env := make([]string, 0, len(envMap))
-	for k, v := range envMap {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	for key, value := range envMap {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 	return env
 }
@@ -145,10 +188,12 @@ func (s *Supervisor) startProcess(name string) error {
 
 	cmd := exec.Command("/bin/sh", "-c", cfg.Command)
 
-	cmd.Env = convertEnvMapToSlice(cfg.Env)
+	env := os.Environ()
+	env = append(env, convertEnvMapToSlice(cfg.Env)...)
+	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	err := cmd.Start()
 	if err != nil {
@@ -193,6 +238,8 @@ func (s *Supervisor) handleDied(event Event) {
 		return
 	}
 
+	fmt.Printf("Process '%s' has died\n", event.Name)
+
 	process.state = Exited
 	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited", event.Name, process.pid))
 
@@ -210,11 +257,10 @@ func (s *Supervisor) stopProcess(name string) error {
 		return fmt.Errorf("process '%s' is not running or starting, cannot stop", name)
 	}
 
-	process.state = Stopping
-
-	signal := unix.SignalNum(cfg.StopSignal)
+	signal := syscall.SIGTERM
 	fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
 	process.cmd.Process.Signal(signal)
+	process.state = Stopping
 
 	select {
 	case <-process.done:
@@ -224,6 +270,8 @@ func (s *Supervisor) stopProcess(name string) error {
 		process.cmd.Process.Kill()
 		<-process.done
 	}
+
+	fmt.Printf("Does not reach here - get blocked on process.done channel\n")
 
 	process.state = Stopped
 	return nil

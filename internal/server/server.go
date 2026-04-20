@@ -320,7 +320,7 @@ func HandleStatus(client Client, name string, server *Server) error {
 		server.Logger.Log(fmt.Sprintf("Getting status of program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
-		resp.Msg = fmt.Sprintf("Program '%s' is running", name)
+		resp.Msg = server.Supervisor.GetStatus(name)
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {
