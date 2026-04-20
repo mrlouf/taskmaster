@@ -99,7 +99,12 @@ func (s *Supervisor) autoStartProcesses() {
 
 	for name, program := range s.Config.Programs {
 
-		process := &Process{Name: name, Config: &program}
+		process := &Process{
+			Name:    name,
+			Config:  &program,
+			state:   Stopped,
+			retries: 0,
+		}
 		s.Processes[name] = process
 
 		if program.AutoStart {
@@ -138,27 +143,27 @@ func (s *Supervisor) GetStatus(name string) string {
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
 
-	// channel qui reçoit la mort du process
 	waitDone := make(chan error, 1)
 	go func() {
 		waitDone <- process.cmd.Wait()
 	}()
 
-	// phase STARTING — on attend soit la mort soit le starttime
 	select {
+	// Process is done before start timer expires: could be a crash or a very fast process
+	// In both cases we consider the process as having died, and we won't transition to ready state
+	// The error from Wait() will be sent to the process.done channel
+	// and the handleDied handler will decide what to do based on process state and retry policy
 	case err := <-waitDone:
-		// mort pendant STARTING → BACKOFF
 		startTimer.Stop()
 		process.done <- err
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 		return
 
+	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
-		// a survécu assez longtemps → RUNNING
 		s.Events <- Event{Kind: EventProcessReady, Name: process.Name}
 	}
 
-	// phase RUNNING — on attend juste la mort
 	err := <-waitDone
 	process.done <- err
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
@@ -195,6 +200,8 @@ func (s *Supervisor) startProcess(name string) error {
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
+
+	// TODO: handle stdout/stderr redirection to files if specified in config
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -208,6 +215,8 @@ func (s *Supervisor) startProcess(name string) error {
 	process.startedAt = time.Now()
 	process.state = Starting
 	process.done = make(chan error, 1)
+
+	process.retries++
 
 	go s.monitorProcess(process, cfg)
 
@@ -233,6 +242,10 @@ func (s *Supervisor) handleReady(name string) error {
 	return nil
 }
 
+// Whenever a process has died, whether it exited normally, it crashed, it was SIG-killed etc.,
+// we will receive an EventProcessDied event which will trigger this handler.
+// The handler will check the process state and retry policy to decide whether to attempt a restart,
+// mark the process as exited, stopped or fatal, and log the event accordingly.
 func (s *Supervisor) handleDied(event Event) {
 
 	process, exists := s.Processes[event.Name]
@@ -241,9 +254,40 @@ func (s *Supervisor) handleDied(event Event) {
 		return
 	}
 
-	fmt.Printf("Process '%s' has died\n", event.Name)
+	fmt.Printf("[DEBUG] Process '%s' has died\n", event.Name)
 
-	process.state = Exited
+	if process.state == Stopping {
+		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been stopped", event.Name, process.pid))
+		process.state = Stopped
+		process.retries = 0
+		return
+	}
+
+	if process.retries >= process.Config.StartRetries {
+		s.Logger.Log(fmt.Sprintf("Process '%s' has exceeded retry limit (%d), marking as fatal", event.Name, process.Config.StartRetries))
+		process.state = Fatal
+		return
+	}
+
+	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has died: %v. Attempting restart (%d/%d)", event.Name, process.pid, process.cmd.Err, process.retries, process.Config.StartRetries))
+
+	err := s.startProcess(event.Name)
+	if err != nil {
+		s.Logger.Log(fmt.Sprintf("Failed to restart process '%s': %v", event.Name, err))
+		// ? Mark process as fatal if restart fails?
+	}
+
+	// If the process has exited without error, consider it normal exit and set state to Exited
+	// and do not attempt to restart unless the process is configured to always restart (Restart: "always")
+	if process.state == Stopping {
+		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been stopped", event.Name, process.pid))
+		process.state = Stopped
+	} else {
+		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited normally", event.Name, process.pid))
+		process.state = Exited
+	}
+	// ? implement restart policy for normal exits if Restart: "always"?
+
 	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited", event.Name, process.pid))
 
 }
@@ -266,17 +310,16 @@ func (s *Supervisor) stopProcess(name string) error {
 	process.state = Stopping
 
 	select {
-	case <-process.done:
+	case process.cmd.Err = <-process.done:
 
 	case <-time.After(time.Duration(cfg.StopTime) * time.Second):
 		// toujours vivant → SIGKILL
 		process.cmd.Process.Kill()
-		<-process.done
+		process.cmd.Err = <-process.done
 	}
 
-	fmt.Printf("Does not reach here - get blocked on process.done channel\n")
+	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been stopped", name, process.pid))
 
-	process.state = Stopped
 	return nil
 
 }
