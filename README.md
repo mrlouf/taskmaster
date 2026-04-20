@@ -24,8 +24,39 @@ The supported commands are:
 - `status <program>`: Get the status of a program (running, stopped, etc.)
 - `healthcheck`: Check if the daemon is running and responsive
 - `reload`: Reload the configuration file and apply any changes to the managed processes
+- `shutdown`: Stop the daemon gracefully, allowing it to clean up resources and terminate all managed processes before exiting
 - `exit`: Stop the daemon gracefully
 - `help`: Display a help message with the list of available commands
+
+## Process States
+
+The daemon manages the state of each process and updates it accordingly. The possible states are:
+
+- `STARTING`: The process is in the process of starting. This state is entered when the daemon receives a command to start the process or the process has an autostart policy, and is executing the command to launch it.
+- `RUNNING`: The process is running and healthy. This state is entered when the process has started successfully and has reached the start time specified in the configuration file.
+- `STOPPING`: The process is in the process of stopping. This state is entered when the daemon receives a command to stop the process and is waiting the specified stop time for the process to terminate gracefully. If the process does not terminate within the stop time, the daemon will forcefully kill the process and transition it to the `STOPPED` state.
+- `STOPPED`: The process is not running. This is the initial state before the process is started, and also the state after the process has been stopped.
+- `EXITED`: The process has exited. This state is entered when the process has terminated, either successfully, with an error or has received a signal. Depending on the exit status and the restart policy, the daemon may attempt to restart the process.
+- `BACKOFF`: The process has failed to start and is waiting before the next retry. This state is entered when the process fails to start, either due to an error or because it exited before reaching the start time. The daemon will wait for a certain backoff time before attempting to restart the process again. If the process continues to fail to start after the maximum number of retries, it will transition to the `FATAL` state.
+- `FATAL`: The process has failed to start after the maximum number of retries has been reached. The process will not be restarted anymore and will remain in this state until a manual intervention or a configuration change.
+
+An example of a successful execution of a manually started (no autostart) long-running process would be:
+
+```bash
+STOPPED → STARTING → RUNNING
+```
+
+An example of a process autostarting and then exiting after normal execution would be:
+
+```bash
+STOPPED → STARTING → RUNNING → EXITED
+```
+
+An example of a process autostarting and failing to start with two retries would be:
+
+```bash
+STOPPED → STARTING → BACKOFF → STARTING → BACKOFF → FATAL
+```
 
 ## Logs
 

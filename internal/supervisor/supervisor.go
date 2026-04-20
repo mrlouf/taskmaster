@@ -43,6 +43,7 @@ const (
 	Running
 	Stopping
 	Exited
+	Backoff
 	Fatal
 )
 
@@ -58,6 +59,8 @@ func (s State) String() string {
 		return "Stopping"
 	case Exited:
 		return "Exited"
+	case Backoff:
+		return "Backoff"
 	case Fatal:
 		return "Fatal"
 	default:
@@ -121,9 +124,22 @@ func (s *Supervisor) handleShutdown() {
 
 	s.Logger.Log("Shutting down supervisor...")
 
-	/* 	for name := range s.Processes {
-		s.stopProcess(name)
-	} */
+	// Stop all running processes
+	for name, process := range s.Processes {
+
+		// ! Override restart policy to prevent any restarts during shutdown
+		process.Config.AutoRestart = "never"
+
+		if process.state == Running || process.state == Starting {
+			s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
+			err := s.stopProcess(name)
+			if err != nil {
+				s.Logger.Log(fmt.Sprintf("Failed to stop program '%s': %v", name, err))
+			}
+		}
+	}
+	// ? Wait for all processes to be stopped before exiting?
+	// ? Add a timeout to force kill any remaining processes?
 
 	s.Logger.Log("Supervisor shutdown complete")
 
@@ -157,7 +173,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 		startTimer.Stop()
 		process.done <- err
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
-		process.state = Exited
+		process.state = Backoff
 		return
 
 	// Timer reaches zero: process is considered ready
@@ -259,6 +275,7 @@ func (s *Supervisor) handleDied(event Event) {
 		return
 	}
 
+	// * DEBUG
 	fmt.Printf("[DEBUG] Process '%s' has died", event.Name)
 	if event.Err != nil {
 		fmt.Printf(" with error: %v", event.Err)
@@ -280,23 +297,29 @@ func (s *Supervisor) handleDied(event Event) {
 	if event.Err != nil {
 		if process.Config.AutoRestart == "never" {
 			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Restart policy is 'never', marking as exited\n", event.Name, event.Err)
-			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Restart policy is 'never', marking as exited", event.Name, process.pid, event.Err))
+			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v and will not be restarted", event.Name, process.pid, event.Err))
 			process.state = Exited
+			process.retries = 0
 			return
 		}
 		if process.retries < process.Config.StartRetries {
 			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Attempting restart (%d/%d)\n", event.Name, event.Err, process.retries+1, process.Config.StartRetries)
 			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Attempting restart (%d/%d)", event.Name, process.pid, event.Err, process.retries+1, process.Config.StartRetries))
 			process.retries++
-			err := s.startProcess(event.Name)
-			if err != nil {
-				s.Logger.Log(fmt.Sprintf("Failed to restart process '%s': %v", event.Name, err))
-				// ? Mark process as fatal if restart fails?
-			}
+			process.state = Backoff
+
+			// * DEBUG: simulate backoff delay before restart
+			time.Sleep(3 * time.Duration(time.Second))
+
+			event := Event{Kind: EventStartProcess, Name: event.Name}
+			s.Events <- event
+			return
+
 		} else {
 			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Maximum retries reached (%d/%d), marking as fatal\n", event.Name, event.Err, process.retries, process.Config.StartRetries)
 			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Maximum retries reached (%d/%d), marking as fatal", event.Name, process.pid, event.Err, process.retries, process.Config.StartRetries))
 			process.state = Fatal
+			process.retries = 0
 			return
 		}
 	}
@@ -319,6 +342,9 @@ func (s *Supervisor) stopProcess(name string) error {
 		return fmt.Errorf("process '%s' is not running or starting, cannot stop", name)
 	}
 
+	// TODO: handle different stop signals instead of hardcoded SIGTERM
+	// TODO: append 'SIG' prefix if signal is specified as a string in config
+	// TODO: eg. TERM → SIGTERM, HUP → SIGHUP, etc.
 	signal := syscall.SIGTERM
 	fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
 	process.cmd.Process.Signal(signal)
@@ -328,7 +354,6 @@ func (s *Supervisor) stopProcess(name string) error {
 	case process.cmd.Err = <-process.done:
 
 	case <-time.After(time.Duration(cfg.StopTime) * time.Second):
-		// toujours vivant → SIGKILL
 		process.cmd.Process.Kill()
 		process.cmd.Err = <-process.done
 	}

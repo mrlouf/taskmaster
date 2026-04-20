@@ -17,7 +17,7 @@ $(DAEMON): $(DAEMON_DIR)/*.go
 $(CONTROLLER): $(CONTROLLER_DIR)/*.go
 	go build -o $@ $(CONTROLLER_DIR)
 
-clean:
+clean: pkill
 	rm -f $(DAEMON) $(CONTROLLER)
 	rm -f /tmp/taskmaster.sock
 	rm -rf ./tmp
