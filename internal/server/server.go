@@ -156,10 +156,22 @@ func RequestShutdown(c Client) error {
 	if err := c.Enc.Encode(req); err != nil {
 		return fmt.Errorf("send: %w", err)
 	}
+
+	fmt.Printf("Shutting down daemon...\n")
+
 	var resp protocol.Response
 	if err := c.Dec.Decode(&resp); err != nil {
 		return fmt.Errorf("recv: %w", err)
 	}
+
+	if !resp.Ok {
+		return fmt.Errorf("shutdown failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("%s\n", resp.Msg)
+	fmt.Printf("Goodbye!\n")
+	os.Exit(0)
+
 	return nil
 }
 
@@ -169,13 +181,21 @@ func HandleShutdown(client Client, server *Server) error {
 	resp.Ok = true
 	resp.Msg = "Daemon is shutting down"
 
-	server.Supervisor.Events <- supervisor.Event{Kind: supervisor.EventShutdown}
+	event := supervisor.Event{
+		Kind:   supervisor.EventShutdown,
+		RespCh: make(chan protocol.Response),
+	}
+
+	server.Supervisor.Events <- event
+
+	resp = <-event.RespCh
+
+	fmt.Printf("Response from supervisor: %s\n", resp.Msg)
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send shutdown response: %w", err)
 	}
 
-	os.Exit(0)
 	return nil
 }
 
@@ -268,7 +288,13 @@ func HandleStop(client Client, name string, server *Server) error {
 	} else {
 
 		server.Logger.Log(fmt.Sprintf("Stopping program '%s' with command: %s", name, program.Command))
-		server.Supervisor.Events <- supervisor.Event{Kind: supervisor.EventStopProcess, Name: name}
+		event := supervisor.Event{
+			Kind:   supervisor.EventStopProcess,
+			Name:   name,
+			RespCh: make(chan protocol.Response),
+		}
+		server.Supervisor.Events <- event
+		resp = <-event.RespCh
 
 		resp.Ok = true
 		resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
