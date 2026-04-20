@@ -90,12 +90,15 @@ func HandleConnection(client Client, server *Server) {
 		}
 
 		err := handleRequest(client, req, server)
-
-		// * DEBUG
 		if err != nil {
-			fmt.Printf("handle request error: %v\n", err)
-		} else {
-			fmt.Printf("handled request: %s %s\n", req.Cmd, req.Name)
+			server.Logger.Log(fmt.Sprintf("handle request error: %v", err))
+			var resp protocol.Response
+			resp.Ok = false
+			resp.Msg = err.Error()
+			if err := client.Enc.Encode(resp); err != nil {
+				server.Logger.Log(fmt.Sprintf("write error: %v", err))
+				return
+			}
 		}
 	}
 }
@@ -116,7 +119,11 @@ func handleRequest(client Client, req protocol.Request, server *Server) error {
 
 	case "status":
 
-		err = HandleStatus(client, req.Name, server)
+		if req.Name == "" {
+			err = HandleAllStatus(client, server)
+		} else {
+			err = HandleProgramStatus(client, req.Name, server)
+		}
 
 	case "restart":
 
@@ -217,12 +224,6 @@ func HandleStart(client Client, name string, server *Server) error {
 		server.Supervisor.Events <- event
 		resp = <-event.RespCh
 
-		/* 		if event.RespCh != nil {
-		   			resp.Msg = fmt.Sprintf("Program '%s' started successfully", name)
-		   		} else {
-		   			resp.Msg = fmt.Sprintf("Failed to start program '%s'", name)
-		   		} */
-
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {
@@ -266,7 +267,6 @@ func HandleStop(client Client, name string, server *Server) error {
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 	} else {
 
-		// TODO: Implement stop logic for the program
 		server.Logger.Log(fmt.Sprintf("Stopping program '%s' with command: %s", name, program.Command))
 		server.Supervisor.Events <- supervisor.Event{Kind: supervisor.EventStopProcess, Name: name}
 
@@ -282,7 +282,30 @@ func HandleStop(client Client, name string, server *Server) error {
 
 }
 
-func RequestStatus(client Client, name string) error {
+func RequestAllStatus(client Client) error {
+
+	var req protocol.Request
+	req.Cmd = "status"
+
+	if err := client.Enc.Encode(req); err != nil {
+		return fmt.Errorf("failed to send status request: %w", err)
+	}
+
+	var resp protocol.Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return fmt.Errorf("failed to receive status response: %w", err)
+	}
+
+	if !resp.Ok {
+		return fmt.Errorf("status command failed: %s", resp.Msg)
+	}
+
+	fmt.Printf("Status of all programs:\n\n%s\n", resp.Msg)
+
+	return nil
+}
+
+func RequestProgramStatus(client Client, name string) error {
 
 	var req protocol.Request
 	req.Cmd = "status"
@@ -306,7 +329,7 @@ func RequestStatus(client Client, name string) error {
 	return nil
 }
 
-func HandleStatus(client Client, name string, server *Server) error {
+func HandleProgramStatus(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
@@ -316,11 +339,28 @@ func HandleStatus(client Client, name string, server *Server) error {
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 	} else {
 
-		// TODO: Implement status logic for the program
+		// ? Keep server logs for status requests?
+		// ? Useful for debugging but too verbose maybe
 		server.Logger.Log(fmt.Sprintf("Getting status of program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = server.Supervisor.GetStatus(name)
+	}
+
+	if err := client.Enc.Encode(resp); err != nil {
+		return fmt.Errorf("failed to send status response: %w", err)
+	}
+
+	return nil
+}
+
+func HandleAllStatus(client Client, server *Server) error {
+
+	var resp protocol.Response
+	resp.Ok = true
+
+	for name := range server.Config.Programs {
+		resp.Msg += fmt.Sprintf(" > %s:	%s\n", name, server.Supervisor.GetStatus(name))
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {

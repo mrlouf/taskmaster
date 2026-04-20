@@ -55,7 +55,6 @@ func parseCommand(line string) (protocol.Request, error) {
 
 	if req.Cmd == "start" ||
 		req.Cmd == "stop" ||
-		req.Cmd == "status" ||
 		req.Cmd == "restart" {
 
 		if req.Name == "" {
@@ -88,7 +87,11 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 	case "status":
 
-		return server.RequestStatus(client, name)
+		if name == "" {
+			return server.RequestAllStatus(client)
+		} else {
+			return server.RequestProgramStatus(client, name)
+		}
 
 	case "restart":
 

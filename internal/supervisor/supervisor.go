@@ -133,10 +133,10 @@ func (s *Supervisor) GetStatus(name string) string {
 
 	process, exists := s.Processes[name]
 	if !exists {
-		return fmt.Sprintf("Program '%s' not found", name)
+		return fmt.Sprintf("'%s' not found", name)
 	}
 
-	return fmt.Sprintf("Program '%s' is in state %s with PID %d", name, process.state, process.pid)
+	return fmt.Sprintf("'%s' is in state %s with PID %d", name, process.state, process.pid)
 
 }
 
@@ -278,6 +278,12 @@ func (s *Supervisor) handleDied(event Event) {
 	// then it means the process has died unexpectedly (crash, SIGKILL, etc.)
 	// and we should check the retry policy to decide whether to attempt a restart or mark as fatal
 	if event.Err != nil {
+		if process.Config.AutoRestart == "never" {
+			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Restart policy is 'never', marking as exited\n", event.Name, event.Err)
+			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Restart policy is 'never', marking as exited", event.Name, process.pid, event.Err))
+			process.state = Exited
+			return
+		}
 		if process.retries < process.Config.StartRetries {
 			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Attempting restart (%d/%d)\n", event.Name, event.Err, process.retries+1, process.Config.StartRetries)
 			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Attempting restart (%d/%d)", event.Name, process.pid, event.Err, process.retries+1, process.Config.StartRetries))
@@ -295,7 +301,7 @@ func (s *Supervisor) handleDied(event Event) {
 		}
 	}
 
-	// ? implement restart policy for normal exits if Restart: "always"?
+	// ? implement restart policy for normal exits if AutoRestart: "always"?
 
 	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited", event.Name, process.pid))
 
