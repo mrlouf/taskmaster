@@ -1,10 +1,5 @@
 # TODO
 
-## Configuration
-
-- The daemon should read its configuration from a file named `taskmaster.yaml` located in the current working directory. The configuration file should be in YAML format and define the programs to be managed by the daemon. The optional flag '-c' can be used to specify an alternative configuration file.
-If the configuration file is missing or contains invalid syntax, the daemon should log an appropriate error message and exit with a non-zero status code.
-
 ## Routines
 
 - On start, the daemon should read the configuration file and start all programs marked as "autostart" automatically.
@@ -15,3 +10,16 @@ STOPPED → STARTING → RUNNING → EXITED  (exit attendu)
                    ↘ BACKOFF            (mort pendant starttime)
                               ↘ FATAL   (trop de retries)
           RUNNING  → STOPPING → STOPPED (stop manuel)
+
+## Subprocess Management
+
+- The daemon should start each program as a N subprocesses, where N is the number of instances specified in the configuration file for that program. Each instance should be managed independently, with its own state and retry count.
+
+## Retry Policy
+
+The program should follow the following retry policy definitions:
+
+- always: The program should be restarted regardless of the exit status or reason for termination, until the maximum number of retries is reached.
+- never: The program should not be restarted. This overrides any restart conditions and means that the program will only be started once, and if it exits (successfully or with an error), it will not be restarted.
+- on-failure: The program should be restarted only if it fails to start. This means that if the program exits with a non-zero exit code during the start phase (id. transition between STARTING and RUNNING), it should be restarted according to the retry policy. However, if the program starts successfully and then later exits (either with a zero or non-zero exit code), it will not be restarted.
+- unexpected: The program should be restarted only if it exits unexpectedly.

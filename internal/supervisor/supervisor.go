@@ -43,6 +43,7 @@ const (
 	Running
 	Stopping
 	Exited
+	Backoff
 	Fatal
 )
 
@@ -58,6 +59,8 @@ func (s State) String() string {
 		return "Stopping"
 	case Exited:
 		return "Exited"
+	case Backoff:
+		return "Backoff"
 	case Fatal:
 		return "Fatal"
 	default:
@@ -99,7 +102,12 @@ func (s *Supervisor) autoStartProcesses() {
 
 	for name, program := range s.Config.Programs {
 
-		process := &Process{Name: name, Config: &program}
+		process := &Process{
+			Name:    name,
+			Config:  &program,
+			state:   Stopped,
+			retries: 0,
+		}
 		s.Processes[name] = process
 
 		if program.AutoStart {
@@ -116,9 +124,22 @@ func (s *Supervisor) handleShutdown() {
 
 	s.Logger.Log("Shutting down supervisor...")
 
-	/* 	for name := range s.Processes {
-		s.stopProcess(name)
-	} */
+	// Stop all running processes
+	for name, process := range s.Processes {
+
+		// ! Override restart policy to prevent any restarts during shutdown
+		process.Config.AutoRestart = "never"
+
+		if process.state == Running || process.state == Starting {
+			s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
+			err := s.stopProcess(name)
+			if err != nil {
+				s.Logger.Log(fmt.Sprintf("Failed to stop program '%s': %v", name, err))
+			}
+		}
+	}
+	// ? Wait for all processes to be stopped before exiting?
+	// ? Add a timeout to force kill any remaining processes?
 
 	s.Logger.Log("Supervisor shutdown complete")
 
@@ -128,44 +149,47 @@ func (s *Supervisor) GetStatus(name string) string {
 
 	process, exists := s.Processes[name]
 	if !exists {
-		return fmt.Sprintf("Program '%s' not found", name)
+		return fmt.Sprintf("'%s' not found", name)
 	}
 
-	return fmt.Sprintf("Program '%s' is in state %s with PID %d", name, process.state, process.pid)
+	return fmt.Sprintf("'%s' is in state %s with PID %d", name, process.state, process.pid)
 
 }
 
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
 
-	// channel qui reçoit la mort du process
 	waitDone := make(chan error, 1)
 	go func() {
 		waitDone <- process.cmd.Wait()
 	}()
 
-	// phase STARTING — on attend soit la mort soit le starttime
 	select {
+	// Process is done before start timer expires: could be a crash or a very fast process
+	// In both cases we consider the process as having died, and we won't transition to ready state
+	// The error from Wait() will be sent to the process.done channel
+	// and the handleDied handler will decide what to do based on process state and retry policy
 	case err := <-waitDone:
-		// mort pendant STARTING → BACKOFF
 		startTimer.Stop()
 		process.done <- err
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+		process.state = Backoff
 		return
 
+	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
-		// a survécu assez longtemps → RUNNING
 		s.Events <- Event{Kind: EventProcessReady, Name: process.Name}
 	}
 
-	// phase RUNNING — on attend juste la mort
 	err := <-waitDone
 	process.done <- err
+	process.state = Exited
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 }
 
 // Helper function to convert env map to slice of "KEY=VALUE" strings
 // Needed since exec.Cmd.Env expects a slice of strings in the format "KEY=VALUE"
+// but our config uses a map[string]string for environment variables
 func convertEnvMapToSlice(envMap map[string]string) []string {
 
 	env := make([]string, 0, len(envMap))
@@ -180,7 +204,7 @@ func (s *Supervisor) startProcess(name string) error {
 	cfg := s.Config.Programs[name]
 	process, exists := s.Processes[name]
 	if !exists {
-		fmt.Printf("Process '%s' not found in supervisor, starting\n", name)
+		fmt.Printf("[DEBUG] Process '%s' not found in supervisor, starting\n", name)
 		process = &Process{Name: name, Config: &cfg}
 		s.Processes[name] = process
 	}
@@ -195,6 +219,8 @@ func (s *Supervisor) startProcess(name string) error {
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
+
+	// TODO: handle stdout/stderr redirection to files if specified in config
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -211,7 +237,11 @@ func (s *Supervisor) startProcess(name string) error {
 
 	go s.monitorProcess(process, cfg)
 
-	s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", name, process.pid))
+	if process.retries > 0 {
+		s.Logger.Log(fmt.Sprintf("Restarted process '%s' with PID %d (retry %d)", name, process.pid, process.retries))
+	} else {
+		s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", name, process.pid))
+	}
 
 	return nil
 }
@@ -233,6 +263,10 @@ func (s *Supervisor) handleReady(name string) error {
 	return nil
 }
 
+// Whenever a process has died, whether it exited normally, it crashed, it was SIG-killed etc.,
+// we will receive an EventProcessDied event which will trigger this handler.
+// The handler will check the process state and retry policy to decide whether to attempt a restart,
+// mark the process as exited, stopped or fatal, and log the event accordingly.
 func (s *Supervisor) handleDied(event Event) {
 
 	process, exists := s.Processes[event.Name]
@@ -241,9 +275,57 @@ func (s *Supervisor) handleDied(event Event) {
 		return
 	}
 
-	fmt.Printf("Process '%s' has died\n", event.Name)
+	// * DEBUG
+	fmt.Printf("[DEBUG] Process '%s' has died", event.Name)
+	if event.Err != nil {
+		fmt.Printf(" with error: %v", event.Err)
+	}
+	fmt.Printf("\n")
 
-	process.state = Exited
+	// Stopping means a stop signal was sent and the process has now exited,
+	// so we can consider the process as having been stopped successfully.
+	if process.state == Stopping {
+		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been stopped", event.Name, process.pid))
+		process.state = Stopped
+		process.retries = 0
+		return
+	}
+
+	// If the process was not in the process of being stopped,
+	// then it means the process has died unexpectedly (crash, SIGKILL, etc.)
+	// and we should check the retry policy to decide whether to attempt a restart or mark as fatal
+	if event.Err != nil {
+		if process.Config.AutoRestart == "never" {
+			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Restart policy is 'never', marking as exited\n", event.Name, event.Err)
+			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v and will not be restarted", event.Name, process.pid, event.Err))
+			process.state = Exited
+			process.retries = 0
+			return
+		}
+		if process.retries < process.Config.StartRetries {
+			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Attempting restart (%d/%d)\n", event.Name, event.Err, process.retries+1, process.Config.StartRetries)
+			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Attempting restart (%d/%d)", event.Name, process.pid, event.Err, process.retries+1, process.Config.StartRetries))
+			process.retries++
+			process.state = Backoff
+
+			// * DEBUG: simulate backoff delay before restart
+			time.Sleep(3 * time.Duration(time.Second))
+
+			event := Event{Kind: EventStartProcess, Name: event.Name}
+			s.Events <- event
+			return
+
+		} else {
+			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Maximum retries reached (%d/%d), marking as fatal\n", event.Name, event.Err, process.retries, process.Config.StartRetries)
+			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Maximum retries reached (%d/%d), marking as fatal", event.Name, process.pid, event.Err, process.retries, process.Config.StartRetries))
+			process.state = Fatal
+			process.retries = 0
+			return
+		}
+	}
+
+	// ? implement restart policy for normal exits if AutoRestart: "always"?
+
 	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited", event.Name, process.pid))
 
 }
@@ -260,23 +342,24 @@ func (s *Supervisor) stopProcess(name string) error {
 		return fmt.Errorf("process '%s' is not running or starting, cannot stop", name)
 	}
 
+	// TODO: handle different stop signals instead of hardcoded SIGTERM
+	// TODO: append 'SIG' prefix if signal is specified as a string in config
+	// TODO: eg. TERM → SIGTERM, HUP → SIGHUP, etc.
 	signal := syscall.SIGTERM
 	fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
 	process.cmd.Process.Signal(signal)
 	process.state = Stopping
 
 	select {
-	case <-process.done:
+	case process.cmd.Err = <-process.done:
 
 	case <-time.After(time.Duration(cfg.StopTime) * time.Second):
-		// toujours vivant → SIGKILL
 		process.cmd.Process.Kill()
-		<-process.done
+		process.cmd.Err = <-process.done
 	}
 
-	fmt.Printf("Does not reach here - get blocked on process.done channel\n")
+	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been stopped", name, process.pid))
 
-	process.state = Stopped
 	return nil
 
 }
@@ -290,12 +373,12 @@ func (s *Supervisor) Start() {
 
 		case EventProcessDied:
 
-			fmt.Printf("Received process died event for program '%s'\n", event.Name)
+			fmt.Printf("[DEBUG] Received process died event for program '%s'\n", event.Name)
 			s.handleDied(event)
 
 		case EventProcessReady:
 
-			fmt.Printf("Received process ready event for program '%s'\n", event.Name)
+			fmt.Printf("[DEBUG] Received process ready event for program '%s'\n", event.Name)
 			err := s.handleReady(event.Name)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to handle ready event for program '%s': %v", event.Name, err))
@@ -303,21 +386,21 @@ func (s *Supervisor) Start() {
 
 		case EventStartProcess:
 
-			fmt.Printf("Received start event for program '%s'\n", event.Name)
+			fmt.Printf("[DEBUG] Received start event for program '%s'\n", event.Name)
 			err := s.startProcess(event.Name)
 			if event.RespCh != nil {
 				resp := protocol.Response{Ok: err == nil}
 				if err != nil {
 					resp.Msg = err.Error()
 				} else {
-					resp.Msg = fmt.Sprintf("Program '%s' started successfully", event.Name)
+					resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
 				}
 				event.RespCh <- resp
 			}
 
 		case EventStopProcess:
 
-			fmt.Printf("Received stop event for program '%s'\n", event.Name)
+			fmt.Printf("[DEBUG] Received stop event for program '%s'\n", event.Name)
 			err := s.stopProcess(event.Name)
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
