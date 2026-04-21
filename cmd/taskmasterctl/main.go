@@ -118,7 +118,8 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 	case "help":
 
-		fmt.Printf(`  __                 __                            __                
+		fmt.Printf(
+			`  __                 __                            __                
 _/  |______    _____|  | __ _____ _____    _______/  |_  ___________ 
 \   __\__  \  /  ___/  |/ //     \\__  \  /  ___/\   __\/ __ \_  __ \
  |  |  / __ \_\___ \|    <|  Y Y  \/ __ \_\___ \  |  | \  ___/|  | \/

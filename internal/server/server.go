@@ -233,7 +233,7 @@ func HandleStart(client Client, name string, server *Server) error {
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 	} else {
 
-		server.Logger.Log(fmt.Sprintf("Starting program '%s' with command: %s", name, program.Command))
+		server.Logger.Log(fmt.Sprintf("STARTING program '%s' with command: %s", name, program.Command))
 
 		event := supervisor.Event{
 			Kind:   supervisor.EventStartProcess,
@@ -297,7 +297,7 @@ func HandleStop(client Client, name string, server *Server) error {
 		resp = <-event.RespCh
 
 		resp.Ok = true
-		resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
+		resp.Msg = fmt.Sprintf("Program '%s' STOPPED successfully", name)
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {
@@ -326,7 +326,7 @@ func RequestAllStatus(client Client) error {
 		return fmt.Errorf("status command failed: %s", resp.Msg)
 	}
 
-	fmt.Printf("Status of all programs:\n\n%s\n", resp.Msg)
+	fmt.Printf("%s\n", resp.Msg)
 
 	return nil
 }
@@ -350,7 +350,7 @@ func RequestProgramStatus(client Client, name string) error {
 		return fmt.Errorf("status command failed: %s", resp.Msg)
 	}
 
-	fmt.Printf("Status of program '%s': %s\n", name, resp.Msg)
+	fmt.Printf("%s\n", resp.Msg)
 
 	return nil
 }
@@ -386,7 +386,7 @@ func HandleAllStatus(client Client, server *Server) error {
 	resp.Ok = true
 
 	for name := range server.Config.Programs {
-		resp.Msg += fmt.Sprintf(" > %s:	%s\n", name, server.Supervisor.GetStatus(name))
+		resp.Msg += fmt.Sprintf("%s\n", server.Supervisor.GetStatus(name))
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {
@@ -431,7 +431,7 @@ func HandleRestart(client Client, name string, server *Server) error {
 	} else {
 
 		// TODO: Implement restart logic for the program
-		server.Logger.Log(fmt.Sprintf("Restarting program '%s' with command: %s", name, program.Command))
+		server.Logger.Log(fmt.Sprintf("ReSTARTING program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = fmt.Sprintf("Program '%s' restarted successfully", name)
