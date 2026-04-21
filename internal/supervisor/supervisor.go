@@ -75,6 +75,7 @@ type Process struct {
 
 	cmd       *exec.Cmd
 	state     State
+	mu        sync.Mutex
 	pid       int
 	startedAt time.Time
 	done      chan error
@@ -104,7 +105,7 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 func (s *Supervisor) autoStartProcesses() {
 
 	// * This could be optimised using a worker pool to gather all programs in parallel
-	// * using goroutines and a WaitGroup, but it could be risky and probably overkill
+	// * using goroutines and a WaitGroup, but it could also be risky and probably overkill
 	for name, program := range s.Config.Programs {
 
 		process := &Process{
@@ -132,10 +133,10 @@ func (s *Supervisor) handleShutdown() {
 
 	var wg sync.WaitGroup
 
-	// Stop all running processes
 	for name, process := range s.Processes {
 
 		wg.Go(func() {
+
 			// ! Override restart policy to prevent any restarts during shutdown
 			process.Config.AutoRestart = "never"
 
@@ -143,14 +144,21 @@ func (s *Supervisor) handleShutdown() {
 				process.state == Starting ||
 				process.state == Backoff {
 
-				fmt.Printf("[DEBUG] Stopping program '%s' with PID %d", name, process.pid)
-				s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
+				cfg := s.Config.Programs[name]
 
-				event := Event{Kind: EventStopProcess, Name: name, RespCh: make(chan protocol.Response)}
+				signal := syscall.SIGTERM
+				fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
+				process.cmd.Process.Signal(signal)
 
-				s.Events <- event
-				fmt.Printf("[DEBUG] Waiting for confirmation that '%s' has stopped...\n", name)
-				<-event.RespCh
+				select {
+				case process.cmd.Err = <-process.done:
+
+				case <-time.After(time.Duration(cfg.StopTime) * time.Second):
+					process.cmd.Process.Kill()
+					process.cmd.Err = <-process.done
+				}
+
+				s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been stopped", name, process.pid))
 			}
 		})
 	}
@@ -190,7 +198,9 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 		startTimer.Stop()
 		process.done <- err
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+		process.mu.Lock()
 		process.state = Backoff
+		process.mu.Unlock()
 		return
 
 	// Timer reaches zero: process is considered ready
@@ -199,8 +209,10 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	}
 
 	err := <-waitDone
+	process.mu.Lock()
 	process.done <- err
 	process.state = Exited
+	process.mu.Unlock()
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 }
 
@@ -226,7 +238,11 @@ func (s *Supervisor) startProcess(name string) error {
 		s.Processes[name] = process
 	}
 
-	if exists && (process.state == Running || process.state == Starting) {
+	process.mu.Lock()
+	isActive := process.state == Running || process.state == Starting
+	process.mu.Unlock()
+
+	if exists && isActive {
 		return fmt.Errorf("process '%s' is already running or starting with PID %d", name, process.pid)
 	}
 
@@ -249,7 +265,9 @@ func (s *Supervisor) startProcess(name string) error {
 	process.cmd = cmd
 	process.pid = cmd.Process.Pid
 	process.startedAt = time.Now()
+	process.mu.Lock()
 	process.state = Starting
+	process.mu.Unlock()
 	process.done = make(chan error, 1)
 
 	go s.monitorProcess(process, cfg)
@@ -299,6 +317,9 @@ func (s *Supervisor) handleDied(event Event) {
 	}
 	fmt.Printf("\n")
 
+	process.mu.Lock()
+	defer process.mu.Unlock()
+
 	// Stopping means a stop signal was sent and the process has now exited,
 	// so we can consider the process as having been stopped successfully.
 	if process.state == Stopping {
@@ -325,12 +346,15 @@ func (s *Supervisor) handleDied(event Event) {
 			process.retries++
 			process.state = Backoff
 
-			// * DEBUG: simulate backoff delay before restart
-			// TODO: implement backoff algo based on config (fixed delay, exponential backoff, etc.)
-			time.Sleep(3 * time.Duration(time.Second))
+			go func() {
+				// * DEBUG: simulate backoff delay before restart
+				// TODO: implement backoff algo based on config (fixed delay, exponential backoff, etc.)
+				time.Sleep(3 * time.Duration(time.Second))
 
-			event := Event{Kind: EventStartProcess, Name: event.Name}
-			s.Events <- event
+				event := Event{Kind: EventStartProcess, Name: event.Name}
+				s.Events <- event
+			}()
+
 			return
 
 		} else {
@@ -430,6 +454,8 @@ func (s *Supervisor) Start() {
 			s.handleReload() */
 
 		case EventShutdown:
+
+			fmt.Printf("[DEBUG] Received shutdown event\n")
 			s.handleShutdown()
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: true, Msg: "Shut down complete"}

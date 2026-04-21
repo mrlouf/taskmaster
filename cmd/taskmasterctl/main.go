@@ -168,7 +168,7 @@ func connectToSocket() (server.Client, error) {
 			}
 			count++
 			if count >= 5 {
-				return c, fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
+				return c, fmt.Errorf("connection failed after 5 attempts: %w", err)
 			}
 		}
 	}
@@ -193,7 +193,7 @@ func run() error {
 
 	client, err := connectToSocket()
 	if err != nil {
-		return fmt.Errorf("failed to connect to socket: %w", err)
+		return fmt.Errorf("cannot connect to socket: %w\nIs the daemon running?", err)
 	}
 
 	rl, err := readline.New("taskmasterctl> ")
