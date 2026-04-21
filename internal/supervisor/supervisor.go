@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 
@@ -85,6 +86,7 @@ type Supervisor struct {
 	Logger    *logger.Logger
 	Processes map[string]*Process
 	Events    chan Event
+	Ready     chan bool
 }
 
 func New(config *config.Config, logger *logger.Logger) *Supervisor {
@@ -94,12 +96,15 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 		Logger:    logger,
 		Processes: make(map[string]*Process),
 		Events:    make(chan Event, 100),
+		Ready:     make(chan bool, 1),
 	}
 
 }
 
 func (s *Supervisor) autoStartProcesses() {
 
+	// * This could be optimised using a worker pool to gather all programs in parallel
+	// * using goroutines and a WaitGroup, but it could be risky and probably overkill
 	for name, program := range s.Config.Programs {
 
 		process := &Process{
@@ -125,6 +130,8 @@ func (s *Supervisor) handleShutdown() {
 	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
 
+	var wg sync.WaitGroup
+
 	// Stop all running processes
 	for name, process := range s.Processes {
 
@@ -137,11 +144,15 @@ func (s *Supervisor) handleShutdown() {
 
 			fmt.Printf("[DEBUG] Stopping program '%s' with PID %d", name, process.pid)
 			s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
-			s.Events <- Event{Kind: EventStopProcess, Name: name}
+
+			event := Event{Kind: EventStopProcess, Name: name, RespCh: make(chan protocol.Response)}
+
+			s.Events <- event
+			<-event.RespCh
 		}
 	}
-	// ? Wait for all processes to be stopped before exiting?
-	// ? Add a timeout to force kill any remaining processes?
+
+	wg.Wait()
 
 	time.Sleep(5 * time.Duration(time.Second))
 
@@ -314,6 +325,7 @@ func (s *Supervisor) handleDied(event Event) {
 			process.state = Backoff
 
 			// * DEBUG: simulate backoff delay before restart
+			// TODO: implement backoff algo based on config (fixed delay, exponential backoff, etc.)
 			time.Sleep(3 * time.Duration(time.Second))
 
 			event := Event{Kind: EventStartProcess, Name: event.Name}
@@ -372,6 +384,8 @@ func (s *Supervisor) stopProcess(name string) error {
 func (s *Supervisor) Start() {
 
 	s.autoStartProcesses()
+
+	s.Ready <- true
 
 	for event := range s.Events {
 		switch event.Kind {
