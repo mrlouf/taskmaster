@@ -6,9 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -184,25 +182,25 @@ func connectToSocket() (server.Client, error) {
 
 func run() error {
 
-	rl, err := readline.New("taskmasterctl> ")
-	if err != nil {
-		return fmt.Errorf("failed to initialise readline: %w", err)
-	}
-	defer rl.Close()
-
-	// ? Necessary? Readline handles SIGINT and EOF internally
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		fmt.Println("Goodbye!")
-		gracefulExit(rl)
-	}()
+	/* 	// ? Necessary? Readline handles SIGINT and EOF internally
+	   	c := make(chan os.Signal, 1)
+	   	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	   	go func() {
+	   		<-c
+	   		fmt.Println("Goodbye!")
+	   		gracefulExit(rl)
+	   	}() */
 
 	client, err := connectToSocket()
 	if err != nil {
 		return fmt.Errorf("failed to connect to socket: %w", err)
 	}
+
+	rl, err := readline.New("taskmasterctl> ")
+	if err != nil {
+		return fmt.Errorf("failed to initialise readline: %w", err)
+	}
+	defer rl.Close()
 
 	for {
 		line, err := rl.Readline()

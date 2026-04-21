@@ -48,8 +48,6 @@ func run() error {
 
 	go supervisor.Start()
 
-	// ? Server needs to wait for supervisor to be ready to avoid data race
-	// ? A better way to do this? Maybe a WaitGroup?
 	<-supervisor.Ready
 
 	go server.Start()

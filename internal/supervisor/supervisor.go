@@ -135,26 +135,27 @@ func (s *Supervisor) handleShutdown() {
 	// Stop all running processes
 	for name, process := range s.Processes {
 
-		// ! Override restart policy to prevent any restarts during shutdown
-		process.Config.AutoRestart = "never"
+		wg.Go(func() {
+			// ! Override restart policy to prevent any restarts during shutdown
+			process.Config.AutoRestart = "never"
 
-		if process.state == Running ||
-			process.state == Starting ||
-			process.state == Backoff {
+			if process.state == Running ||
+				process.state == Starting ||
+				process.state == Backoff {
 
-			fmt.Printf("[DEBUG] Stopping program '%s' with PID %d", name, process.pid)
-			s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
+				fmt.Printf("[DEBUG] Stopping program '%s' with PID %d", name, process.pid)
+				s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
 
-			event := Event{Kind: EventStopProcess, Name: name, RespCh: make(chan protocol.Response)}
+				event := Event{Kind: EventStopProcess, Name: name, RespCh: make(chan protocol.Response)}
 
-			s.Events <- event
-			<-event.RespCh
-		}
+				s.Events <- event
+				fmt.Printf("[DEBUG] Waiting for confirmation that '%s' has stopped...\n", name)
+				<-event.RespCh
+			}
+		})
 	}
 
 	wg.Wait()
-
-	time.Sleep(5 * time.Duration(time.Second))
 
 	fmt.Printf("[DEBUG] Supervisor shutdown complete\n")
 	s.Logger.Log("Supervisor shutdown complete")
@@ -433,7 +434,6 @@ func (s *Supervisor) Start() {
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: true, Msg: "Shut down complete"}
 			}
-			time.Sleep(2 * time.Duration(time.Second))
 			os.Exit(0)
 		}
 	}
