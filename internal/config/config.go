@@ -47,7 +47,7 @@ type Config struct {
 	Programs map[string]Program `yaml:"programs"`
 }
 
-func getConfFile() string {
+/*func getConfFile() string {
 
 	if len(os.Args) <= 1 {
 		return "./taskmaster.conf"
@@ -65,7 +65,7 @@ func getConfFile() string {
 	}
 	return "./taskmaster.conf"
 
-}
+}*/
 
 func LoadConfig() (*Config, error) {
 
