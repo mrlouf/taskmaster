@@ -15,6 +15,30 @@ import (
 	"github.com/mrlouf/taskmaster/internal/server"
 )
 
+func printHelp() {
+
+	fmt.Printf(
+		`  __                 __                            __                
+_/  |______    _____|  | __ _____ _____    _______/  |_  ___________ 
+\   __\__  \  /  ___/  |/ //     \\__  \  /  ___/\   __\/ __ \_  __ \
+ |  |  / __ \_\___ \|    <|  Y Y  \/ __ \_\___ \  |  | \  ___/|  | \/
+ |__| (____  /____  >__|_ \__|_|  (____  /____  > |__|  \___  >__|   
+           \/     \/     \/     \/     \/     \/            \/       
+Usage:
+ start <programs>	: start one or multiple programs
+ stop <programs>	: stop one or multiple programs
+ status [programs]	: display the status of one or multiple programs.
+ 				Display all programs if no name is provided
+ restart <programs>	: restart one or multiple programs
+ reload			: reload the configuration
+ shutdown		: shutdown the server
+ help			: display this help message
+ healthcheck		: perform a health check
+ exit			: exit the controller
+
+`)
+}
+
 func gracefulExit(rl *readline.Instance) {
 
 	if rl != nil {
@@ -118,27 +142,7 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 	case "help":
 
-		fmt.Printf(
-			`  __                 __                            __                
-_/  |______    _____|  | __ _____ _____    _______/  |_  ___________ 
-\   __\__  \  /  ___/  |/ //     \\__  \  /  ___/\   __\/ __ \_  __ \
- |  |  / __ \_\___ \|    <|  Y Y  \/ __ \_\___ \  |  | \  ___/|  | \/
- |__| (____  /____  >__|_ \__|_|  (____  /____  > |__|  \___  >__|   
-           \/     \/     \/     \/     \/     \/            \/       
-Usage:
- start <programs>	: start one or multiple programs
- stop <programs>	: stop one or multiple programs
- status [programs]	: display the status of one or multiple programs.
- 				Display all programs if no name is provided
- restart <programs>	: restart one or multiple programs
- reload			: reload the configuration
- shutdown		: shutdown the server
- help			: display this help message
- healthcheck		: perform a health check
- exit			: exit the controller
-
-`)
-
+		printHelp()
 		return nil
 
 	case "exit":

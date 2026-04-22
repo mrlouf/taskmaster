@@ -325,12 +325,24 @@ func (s *Supervisor) handleDied(event Event) {
 	process.mu.Lock()
 	defer process.mu.Unlock()
 
+	fmt.Println("\n[DEBUG] Process state before handling death:", process.state.String())
+	fmt.Println(process.cmd)
+	fmt.Println(process.cmd.ProcessState)
+	fmt.Println(process.cmd.ProcessState.ExitCode())
+	fmt.Println(event.Err)
+	fmt.Println()
+
 	// STOPPING means a stop signal was sent and the process has now EXITED,
 	// so we can consider the process as having been STOPPED successfully.
-	if process.state == STOPPING {
+	if process.state == STOPPING || process.state == BACKOFF || process.state == EXITED {
+
+		fmt.Printf("[DEBUG] Process '%s' has been STOPPED successfully\n", event.Name)
 		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been STOPPED", event.Name, process.pid))
 		process.state = STOPPED
 		process.retries = 0
+		process.done = nil
+		process.pid = 0
+
 		return
 	}
 
@@ -354,7 +366,7 @@ func (s *Supervisor) handleDied(event Event) {
 			go func() {
 				// * DEBUG: simulate BACKOFF delay before restart
 				// TODO: implement BACKOFF algo based on config (fixed delay, exponential BACKOFF, etc.)
-				time.Sleep(3 * time.Duration(time.Second))
+				time.Sleep(time.Duration(process.retries) * time.Second)
 
 				event := Event{Kind: EventStartProcess, Name: event.Name}
 				s.Events <- event
@@ -377,6 +389,22 @@ func (s *Supervisor) handleDied(event Event) {
 
 }
 
+func getSignalByName(name string) syscall.Signal {
+
+	switch name {
+	case "TERM":
+		return syscall.SIGTERM
+	case "HUP":
+		return syscall.SIGHUP
+	case "INT":
+		return syscall.SIGINT
+	case "KILL":
+		return syscall.SIGKILL
+	default:
+		return syscall.SIGTERM // default to SIGTERM if unknown signal is specified
+	}
+}
+
 func (s *Supervisor) stopProcess(name string) error {
 
 	cfg := s.Config.Programs[name]
@@ -392,10 +420,13 @@ func (s *Supervisor) stopProcess(name string) error {
 	// TODO: handle different stop signals instead of hardcoded SIGTERM
 	// TODO: append 'SIG' prefix if signal is specified as a string in config
 	// TODO: eg. TERM → SIGTERM, HUP → SIGHUP, etc.
-	signal := syscall.SIGTERM
-	fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
+	signal := getSignalByName(cfg.StopSignal)
+	fmt.Printf("Sending signal %s to process '%s' with PID %d\n", cfg.StopSignal, name, process.pid)
 	process.cmd.Process.Signal(signal)
+
+	process.mu.Lock()
 	process.state = STOPPING
+	process.mu.Unlock()
 
 	select {
 	case process.cmd.Err = <-process.done:

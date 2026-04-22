@@ -157,7 +157,7 @@ func RequestShutdown(c Client) error {
 		return fmt.Errorf("send: %w", err)
 	}
 
-	fmt.Printf("Shutting down daemon...\n")
+	fmt.Printf("Sending shutdown request\n")
 
 	var resp protocol.Response
 	if err := c.Dec.Decode(&resp); err != nil {
