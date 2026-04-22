@@ -3,11 +3,10 @@ package config
 import (
 	"fmt"
 	"os"
-
-	"gopkg.in/yaml.v3"
+	"flag"
 )
 
-type IntOrSlice []int
+/*type IntOrSlice []int
 
 // Custom unmarshal function to handle both single int and slice of ints
 // in the YAML configuration, such as for the "exitcodes" field.
@@ -24,7 +23,7 @@ func (i *IntOrSlice) UnmarshalYAML(value *yaml.Node) error {
 	}
 	*i = slice
 	return nil
-}
+}*/
 
 type Program struct {
 	Command      string            `yaml:"cmd"`
@@ -43,31 +42,30 @@ type Program struct {
 	Env          map[string]string `yaml:"env"`
 }
 
-type Config struct {
+/*type Config struct {
 	Programs map[string]Program `yaml:"programs"`
-}
-
-/*func getConfFile() string {
-
-	if len(os.Args) <= 1 {
-		return "./taskmaster.conf"
-	}
-
-	for i, arg := range os.Args {
-		if arg == "-c" || arg == "--config" {
-			if i+1 < len(os.Args) {
-				return os.Args[i+1]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s flag requires a value\n", arg)
-				os.Exit(1)
-			}
-		}
-	}
-	return "./taskmaster.conf"
-
 }*/
 
-func LoadConfig() (*Config, error) {
+func getConfFile() string {
+
+	var path string
+	flag.StringVar(&path, "c", "./taskmaster.conf", "Path to config file")
+	flag.StringVar(&path, "config", "./taskmaster.conf", "Path to config file")
+	flag.Parse()
+
+	return path
+
+}
+
+func LoadConfig() (*Config, error)
+	path = getConfFile()
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("config file '%s': %w", path, err)
+	}
+
+
+/*func LoadConfig() (*Config, error) {
 
 	conf_file := getConfFile()
 
@@ -94,7 +92,7 @@ func LoadConfig() (*Config, error) {
 
 	return &cfg, nil
 
-}
+}*/
 
 func (cfg *Config) validate() error {
 	for name, program := range cfg.Programs {

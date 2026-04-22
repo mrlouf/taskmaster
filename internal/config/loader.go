@@ -31,7 +31,3 @@ func getConfFile() string {
 	return path
 
 }
-
-//func LoadConfig2() (*Config, error)
-
-//
