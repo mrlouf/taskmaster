@@ -9,18 +9,30 @@ import (
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
+	"github.com/mrlouf/taskmaster/internal/protocol"
 	"github.com/mrlouf/taskmaster/internal/server"
 	"github.com/mrlouf/taskmaster/internal/supervisor"
 )
 
-func waitForSignals(supervisor *supervisor.Supervisor) {
+func waitForSignals(s *supervisor.Supervisor) {
 
 	// Handle graceful shutdown on SIGINT and SIGTERM
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
-	supervisor.Logger.Log("Received shutdown signal, exiting...")
-	// supervisor.Shutdown() // TODO
+	s.Logger.Log("Received shutdown signal, exiting...")
+
+	event := supervisor.Event{
+		Kind:   supervisor.EventShutdown,
+		RespCh: make(chan protocol.Response),
+	}
+
+	s.Events <- event
+	resp := <-event.RespCh
+	if !resp.Ok {
+		s.Logger.Log(fmt.Sprintf("Failed to shutdown supervisor gracefully: %s", resp.Msg))
+	}
+
 	os.Remove("/tmp/taskmaster.sock")
 	os.Exit(0)
 
