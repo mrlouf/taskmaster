@@ -91,7 +91,8 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("error while parsing file '%s': %w", path, err)
 	}
 	if err = validate(&cfg); err != nil {
-		// 	return nil, fmt.Errorf("configuration file format error '%s': %w", path, err)
+		// fmt.Printf("err %v", err)
+		return nil, fmt.Errorf("configuration file format error '%s':\n%w", path, err)
 	}
 	return &cfg, nil
 }

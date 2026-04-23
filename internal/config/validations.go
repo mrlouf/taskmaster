@@ -6,31 +6,36 @@ import (
 )
 
 var ErrInvalidPath = errors.New("detected forbidden null character")
-var ErrNumProc = errors.New("NumProcs must be a positive integer > 0")
+var ErrNumSPos = errors.New("must be a positive integer > 0")
+var ErrNumPos = errors.New("must be a positive integer >= 0")
 var ErrUmask = errors.New("invalid umask code")
 var ErrAutoRestart = errors.New("invalid keyword for AutoRestart")
 var ErrStopSignal = errors.New("invalid keyword for StopSignal")
 var ErrEnvFormat = errors.New("invalid env format")
 
 func isnotnullchar(str string) error {
-	for c := range str {
-		if c == 0 {
+	for i := 0; i < len(str); i++ {
+		if str[i] == 0 {
 			return ErrInvalidPath
 		}
 	}
 	return nil
 }
 
-func ispositivedigit(input any) error {
+func ispositivedigit(input any, strict bool) error {
 	switch n := input.(type) {
 	case int:
-		if n <= 0 {
-			return ErrNumProc
+		if strict == true && n <= 0 {
+			return ErrNumSPos
+		} else if strict == false && n < 0 {
+			return ErrNumPos
 		}
 	case []int:
 		for x := range n {
-			if x <= 0 {
-				return ErrNumProc
+			if strict == true && x <= 0 {
+				return ErrNumSPos
+			} else if strict == false && x < 0 {
+				return ErrNumPos
 			}
 		}
 	}
@@ -78,6 +83,9 @@ func validate(config *Config) error {
 		if err := isnotnullchar(program.Command); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field Command: %w", name, err))
 		}
+		if err := ispositivedigit(program.NumProcs, true); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field NumProcs: %w", name, err))
+		}
 		// if err := validumask(program.Umask); err != nil {
 		// 	errs = append(errs, fmt.Errorf("Program %s, Field Umask: %w", name, err))
 		// }
@@ -87,19 +95,19 @@ func validate(config *Config) error {
 		if err := validautorestart(program.AutoRestart); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field AutoRestart: %w", name, err))
 		}
-		if err := ispositivedigit(program.ExitCodes); err != nil {
+		if err := ispositivedigit(program.ExitCodes, false); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field ExitCodes: %w", name, err))
 		}
-		if err := ispositivedigit(program.StartRetries); err != nil {
+		if err := ispositivedigit(program.StartRetries, false); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field StartRetries: %w", name, err))
 		}
-		if err := ispositivedigit(program.StartTime); err != nil {
+		if err := ispositivedigit(program.StartTime, false); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field StartTime: %w", name, err))
 		}
 		if err := validstopsignal(program.StopSignal); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field StopSignal: %w", name, err))
 		}
-		if err := ispositivedigit(program.StopTime); err != nil {
+		if err := ispositivedigit(program.StopTime, false); err != nil {
 			errs = append(errs, fmt.Errorf("Program %s, Field StopTime: %w", name, err))
 		}
 		if err := isnotnullchar(program.Stdout); err != nil {
