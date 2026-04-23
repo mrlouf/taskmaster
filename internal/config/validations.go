@@ -1,6 +1,9 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var ErrInvalidPath = errors.New("detected forbidden null character")
 var ErrNumProc = errors.New("NumProcs must be a positive integer > 0")
@@ -69,23 +72,45 @@ func validenv(str map[string]string) error {
 // }
 
 func validate(config *Config) error {
-	var err [13]error
-	//how to add line number
-	for _, program := range config.Programs {
-		err[0] = isnotnullchar(program.Command)
-		err[1] = ispositivedigit(program.NumProcs)
-		// err[2] = validumask(program.Umask)
-		err[3] = isnotnullchar(program.WorkingDir)
-		err[4] = validautorestart(program.AutoRestart)
-		err[5] = ispositivedigit(program.ExitCodes)
-		err[6] = ispositivedigit(program.StartRetries)
-		err[7] = ispositivedigit(program.StartTime)
-		err[8] = validstopsignal(program.StopSignal)
-		err[9] = ispositivedigit(program.StopTime)
-		err[10] = isnotnullchar(program.Stdout)
-		err[11] = isnotnullchar(program.Stderr)
-		err[12] = validenv(program.Env)
-	}
+	var errs []error
 
-	return nil
+	for name, program := range config.Programs {
+		if err := isnotnullchar(program.Command); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field Command: %w", name, err))
+		}
+		// if err := validumask(program.Umask); err != nil {
+		// 	errs = append(errs, fmt.Errorf("Program %s, Field Umask: %w", name, err))
+		// }
+		if err := isnotnullchar(program.WorkingDir); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field WorkingDir: %w", name, err))
+		}
+		if err := validautorestart(program.AutoRestart); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field AutoRestart: %w", name, err))
+		}
+		if err := ispositivedigit(program.ExitCodes); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field ExitCodes: %w", name, err))
+		}
+		if err := ispositivedigit(program.StartRetries); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field StartRetries: %w", name, err))
+		}
+		if err := ispositivedigit(program.StartTime); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field StartTime: %w", name, err))
+		}
+		if err := validstopsignal(program.StopSignal); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field StopSignal: %w", name, err))
+		}
+		if err := ispositivedigit(program.StopTime); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field StopTime: %w", name, err))
+		}
+		if err := isnotnullchar(program.Stdout); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field Stdout: %w", name, err))
+		}
+		if err := isnotnullchar(program.Stderr); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field Stderr: %w", name, err))
+		}
+		if err := validenv(program.Env); err != nil {
+			errs = append(errs, fmt.Errorf("Program %s, Field Env: %w", name, err))
+		}
+	}
+	return errors.Join(errs...)
 }
