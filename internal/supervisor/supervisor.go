@@ -122,6 +122,7 @@ func (s *Supervisor) autoStartProcesses() {
 
 func (s *Supervisor) handleShutdown() {
 
+	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
 
 	// Stop all running processes
@@ -130,17 +131,21 @@ func (s *Supervisor) handleShutdown() {
 		// ! Override restart policy to prevent any restarts during shutdown
 		process.Config.AutoRestart = "never"
 
-		if process.state == Running || process.state == Starting {
+		if process.state == Running ||
+			process.state == Starting ||
+			process.state == Backoff {
+
+			fmt.Printf("[DEBUG] Stopping program '%s' with PID %d", name, process.pid)
 			s.Logger.Log(fmt.Sprintf("Stopping program '%s' with PID %d", name, process.pid))
-			err := s.stopProcess(name)
-			if err != nil {
-				s.Logger.Log(fmt.Sprintf("Failed to stop program '%s': %v", name, err))
-			}
+			s.Events <- Event{Kind: EventStopProcess, Name: name}
 		}
 	}
 	// ? Wait for all processes to be stopped before exiting?
 	// ? Add a timeout to force kill any remaining processes?
 
+	time.Sleep(5 * time.Duration(time.Second))
+
+	fmt.Printf("[DEBUG] Supervisor shutdown complete\n")
 	s.Logger.Log("Supervisor shutdown complete")
 
 }
@@ -411,7 +416,11 @@ func (s *Supervisor) Start() {
 
 		case EventShutdown:
 			s.handleShutdown()
-			return
+			if event.RespCh != nil {
+				event.RespCh <- protocol.Response{Ok: true, Msg: "Shut down complete"}
+			}
+			time.Sleep(2 * time.Duration(time.Second))
+			os.Exit(0)
 		}
 	}
 }
