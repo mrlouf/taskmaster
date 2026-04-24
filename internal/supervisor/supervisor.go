@@ -400,6 +400,10 @@ func getSignalByName(name string) syscall.Signal {
 		return syscall.SIGINT
 	case "KILL":
 		return syscall.SIGKILL
+	case "USR1":
+		return syscall.SIGUSR1
+	case "USR2":
+		return syscall.SIGUSR2
 	default:
 		return syscall.SIGTERM // default to SIGTERM if unknown signal is specified
 	}
