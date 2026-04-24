@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -203,13 +204,7 @@ func didProcessExitExpectedly(state *os.ProcessState, cfg config.Program) bool {
 
 	exitCode := state.ExitCode()
 
-	for _, code := range cfg.ExitCodes {
-		if exitCode == code {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(cfg.ExitCodes, exitCode)
 }
 
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
