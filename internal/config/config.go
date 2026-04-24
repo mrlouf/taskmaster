@@ -1,10 +1,13 @@
 package config
 
 import (
+	// "errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 )
 
 type IntOrSlice []int
@@ -47,75 +50,117 @@ type Config struct {
 	Programs map[string]Program `yaml:"programs"`
 }
 
-func getConfFile() string {
+func getConfFilePath() string {
+	// error management?
 
-	if len(os.Args) <= 1 {
-		return "./taskmaster.conf"
+	var path string
+	flag.StringVar(&path, "c", "./taskmaster.conf", "Path to config file")
+	flag.StringVar(&path, "config", "./taskmaster.conf", "Path to config file")
+	flag.Parse()
+	return path
+
+}
+
+func getNodeConfig(file *os.File) (Config, error) {
+	var cfg Config
+
+	// loader, err := yaml.NewLoader(file)
+	// if err != nil {
+	// 	return config, err
+	// }
+	loader, err := io.ReadAll(file)
+	if err != nil {
+		return cfg, err
+	}
+	if err = yaml.Load(loader, &cfg, yaml.WithKnownFields()); err != nil {
+		return cfg, err
 	}
 
-	for i, arg := range os.Args {
-		if arg == "-c" || arg == "--config" {
-			if i+1 < len(os.Args) {
-				return os.Args[i+1]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s flag requires a value\n", arg)
-				os.Exit(1)
-			}
-		}
-	}
-	return "./taskmaster.conf"
-
+	return cfg, nil
 }
 
 func LoadConfig() (*Config, error) {
-
-	conf_file := getConfFile()
-
-	_, err := os.Stat(conf_file)
+	//open file
+	path := getConfFilePath()
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+		return nil, fmt.Errorf("config file '%s': %w", path, err)
 	}
-
-	file, err := os.ReadFile(conf_file)
+	cfg, err := getNodeConfig(file)
 	if err != nil {
-		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+		return nil, fmt.Errorf("error while parsing file '%s': %w", path, err)
 	}
-
-	var cfg Config
-	err = yaml.Unmarshal(file, &cfg)
-	if err != nil {
-		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+	if err = validate(&cfg); err != nil {
+		// fmt.Printf("err %v", err)
+		return nil, fmt.Errorf("configuration file format error '%s':\n%w", path, err)
 	}
-
-	err = cfg.validate()
-	if err != nil {
-		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
-	}
-
 	return &cfg, nil
-
 }
 
-func (cfg *Config) validate() error {
-	for name, program := range cfg.Programs {
-		if program.Command == "" {
-			return fmt.Errorf("program '%s' has an empty command", name)
-		}
-		if program.NumProcs < 1 {
-			return fmt.Errorf("program '%s' must have at least 1 process", name)
-		}
-		if program.Umask < 0 || program.Umask > 0o777 {
-			return fmt.Errorf("program '%s' has an invalid umask: %o", name, program.Umask)
-		}
-		if program.StartRetries < 0 {
-			return fmt.Errorf("program '%s' has a negative startretries value", name)
-		}
-		if program.StartTime < 0 {
-			return fmt.Errorf("program '%s' has a negative starttime value", name)
-		}
-		if program.StopTime < 0 {
-			return fmt.Errorf("program '%s' has a negative stoptime value", name)
-		}
-	}
-	return nil
-}
+// func validate(config *Config) error {
+// 	if len(config.Programs) != 1 {
+// 		return errors.New("yaml document root structure error")
+// 	}
+// 	if prog, ok := config.Programs["programs"] ; ok == false{
+// 		return errors.New("missing 'programs' key value")
+// 	}
+// 	for i := 0; i < len(prog); i++ {
+
+// 	}
+
+// 	return nil
+
+// }
+
+// func LoadConfig() (*Config, error) {
+
+// 	conf_file := getConfFile()
+
+// 	_, err := os.Stat(conf_file)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+// 	}
+
+// 	file, err := os.ReadFile(conf_file)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+// 	}
+
+// 	var cfg Config
+// 	err = yaml.Unmarshal(file, &cfg)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+// 	}
+
+// 	err = cfg.validate()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
+// 	}
+
+// 	return &cfg, nil
+
+// }
+
+// func (cfg *Config) validate() error {
+// 	for name, program := range cfg.Programs {
+// 		if program.Command == "" {
+// 			return fmt.Errorf("program '%s' has an empty command", name)
+// 		}
+// 		if program.NumProcs < 1 {
+// 			return fmt.Errorf("program '%s' must have at least 1 process", name)
+// 		}
+// 		if program.Umask < 0 || program.Umask > 0o777 {
+// 			return fmt.Errorf("program '%s' has an invalid umask: %o", name, program.Umask)
+// 		}
+// 		if program.StartRetries < 0 {
+// 			return fmt.Errorf("program '%s' has a negative startretries value", name)
+// 		}
+// 		if program.StartTime < 0 {
+// 			return fmt.Errorf("program '%s' has a negative starttime value", name)
+// 		}
+// 		if program.StopTime < 0 {
+// 			return fmt.Errorf("program '%s' has a negative stoptime value", name)
+// 		}
+// 	}
+// 	return nil
+// }
