@@ -223,17 +223,23 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	case err := <-waitDone:
 		startTimer.Stop()
 		process.done <- err
-		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+
 		expectedExit := didProcessExitExpectedly(process.cmd.ProcessState, cfg)
 		process.mu.Lock()
+
 		if expectedExit {
+
 			fmt.Printf("[DEBUG] Process '%s' has EXITED normally with exit code %d\n", process.Name, process.cmd.ProcessState.ExitCode())
 			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has EXITED normally with exit code %d", process.Name, process.pid, process.cmd.ProcessState.ExitCode()))
 			process.state = EXITED
+
 		} else {
+
 			fmt.Printf("[DEBUG] Process '%s' has CRASHED with error: %v\n", process.Name, err)
 			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has CRASHED with error: %v", process.Name, process.pid, err))
 			process.state = BACKOFF
+			s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+
 		}
 
 		process.mu.Unlock()
@@ -249,7 +255,8 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	process.done <- err
 	process.state = EXITED
 	process.mu.Unlock()
-	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+
+	// s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 }
 
 // Helper function to convert env map to slice of "KEY=VALUE" strings
@@ -364,18 +371,21 @@ func (s *Supervisor) handleDied(event Event) {
 	fmt.Println(event.Err)
 	fmt.Println()
 
-	// STOPPING means a stop signal was sent and the process has now EXITED,
+	// STOPPING means a stop signal was sent and the process has now terminated,
 	// so we can consider the process as having been STOPPED successfully.
-	if process.state == STOPPING || process.state == EXITED {
+	if process.state == STOPPING {
 
 		fmt.Printf("[DEBUG] Process '%s' has been STOPPED successfully\n", event.Name)
 		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has been STOPPED", event.Name, process.pid))
-		if process.state == STOPPING {
-			process.state = STOPPED
-		}
+
+		process.state = STOPPED
 		process.retries = 0
 		process.done = nil
 		process.pid = 0
+
+		// A process that was intentionally stopped should not be restarted,
+		// even if the exit code is not in the expected exit codes list,
+		// so we return here without checking the retry policy or attempting a restart.
 
 		return
 	}
@@ -398,8 +408,10 @@ func (s *Supervisor) handleDied(event Event) {
 			process.state = BACKOFF
 
 			go func() {
-				// * DEBUG: simulate BACKOFF delay before restart
-				// TODO: implement BACKOFF algo based on config (fixed delay, exponential BACKOFF, etc.)
+				// Official supervisor documentation states that the restart strategy is to wait
+				// n+1 seconds before each restart attempt, where n is the number of retries already attempted.
+				// We could try and go fancy with some exponential backoff or something,
+				// but let's just stick to the official strategy for now.
 				time.Sleep(time.Duration(process.retries) * time.Second)
 
 				event := Event{Kind: EventStartProcess, Name: event.Name}
