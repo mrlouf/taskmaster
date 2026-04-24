@@ -82,4 +82,5 @@ make dev
 
 #### References
 
+- [Supervisor Documentation about process states](https://supervisord.org/subprocess.html#process-states)
 - [UNIX sockets in Golang](https://dev.to/douglasmakey/understanding-unix-domain-sockets-in-golang-32n8)
