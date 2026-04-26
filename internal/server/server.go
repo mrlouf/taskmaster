@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -385,9 +387,25 @@ func HandleAllStatus(client Client, server *Server) error {
 	var resp protocol.Response
 	resp.Ok = true
 
+	// ! Iterating over maps in Go does not guarantee order,
+	// ! so we need to sort the program names in a slice first.
+	keys := make([]string, 0, len(server.Config.Programs))
 	for name := range server.Config.Programs {
-		resp.Msg += fmt.Sprintf("%s\n", server.Supervisor.GetStatus(name))
+		keys = append(keys, name)
 	}
+
+	slices.Sort(keys)
+
+	// Use a string builder to efficiently concatenate status of all programs
+	// instead of using the '+' operator which creates multiple intermediate strings and wastes memory
+	var b strings.Builder
+
+	for _, name := range keys {
+		b.WriteString(server.Supervisor.GetStatus(name))
+		b.WriteString("\n")
+	}
+
+	resp.Msg = b.String()
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send status response: %w", err)

@@ -190,7 +190,7 @@ func (s *Supervisor) GetStatus(name string) string {
 	pid := process.pid
 	process.mu.Unlock()
 
-	return fmt.Sprintf("%s\t\t%s pid %d", name, state, pid)
+	return fmt.Sprintf("%s\t\t\t%s pid %d", name, state, pid)
 
 }
 
@@ -224,9 +224,9 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	}
 
 	err := <-waitDone
-	// process.mu.Lock()
+	process.mu.Lock()
 	process.done <- err
-	// process.mu.Unlock()
+	process.mu.Unlock()
 
 	// s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 }
@@ -346,16 +346,16 @@ func (s *Supervisor) handleDied(event Event) {
 
 	case "never":
 
-		fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Restart policy is 'never', marking as EXITED\n", event.Name, event.Err)
-		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v and will not be restarted", event.Name, process.pid, event.Err))
+		fmt.Printf("[DEBUG] Process '%s' has terminated.\n", event.Name)
+		s.Logger.Log(fmt.Sprintf("Process '%s' has terminated.", event.Name))
 		process.state = EXITED
 		process.retries = 0
 		process.pid = 0
 
 	case "always":
 
-		fmt.Printf("[DEBUG] Process '%s' has exited: %v. Restart policy is 'always', attempting restart\n", event.Name, event.Err)
-		s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited: %v. Restart policy is 'always', attempting restart", event.Name, process.pid, event.Err))
+		fmt.Printf("[DEBUG] Process '%s' has terminated. Restart policy is 'always', attempting restart\n", event.Name)
+		s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Restart policy is 'always', attempting restart", event.Name))
 		event := Event{Kind: EventStartProcess, Name: event.Name}
 		s.Events <- event
 
@@ -364,19 +364,26 @@ func (s *Supervisor) handleDied(event Event) {
 		if expectedExit {
 
 			// Expected exit: mark process as EXITED
-			fmt.Printf("[DEBUG] Process '%s' has EXITED with expected exit code %d. Restart policy is 'unexpected', marking as EXITED\n", event.Name, process.cmd.ProcessState.ExitCode())
-			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has EXITED with expected exit code %d. Restart policy is 'unexpected', marking as EXITED", event.Name, process.pid, process.cmd.ProcessState.ExitCode()))
+			fmt.Printf("[DEBUG] Process '%s' has terminated with expected exit code %d.\n", event.Name, process.cmd.ProcessState.ExitCode())
+			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated with expected exit code %d.", event.Name, process.cmd.ProcessState.ExitCode()))
 			process.state = EXITED
 			process.retries = 0
 			process.pid = 0
 
 		} else if process.retries < process.Config.StartRetries {
 
-			// Unexpected exit: mark process as BACKOFF and attempt restart if retries are still available
-			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Attempting restart (%d/%d)\n", event.Name, event.Err, process.retries+1, process.Config.StartRetries)
-			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Attempting restart (%d/%d)", event.Name, process.pid, event.Err, process.retries+1, process.Config.StartRetries))
+			// Unexpected exit: mark process as BACKOFF if terminated during startup
+			// else mark as EXITED and attempt restart if retries are still available
+			if process.state == STARTING {
+				process.state = BACKOFF
+			} else {
+				process.state = EXITED
+			}
+
+			fmt.Printf("[DEBUG] Process '%s' has terminated. Attempting restart (%d/%d)\n", event.Name, process.retries+1, process.Config.StartRetries)
+			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Attempting restart (%d/%d)", event.Name, process.retries+1, process.Config.StartRetries))
+
 			process.retries++
-			process.state = BACKOFF
 
 			go func() {
 				// Official supervisor documentation states that the restart strategy is to wait
@@ -390,8 +397,8 @@ func (s *Supervisor) handleDied(event Event) {
 		} else {
 
 			// Unexpected exit and no more retries available: mark process as FATAL
-			fmt.Printf("[DEBUG] Process '%s' has crashed with error: %v. Restart attempts exhausted (%d/%d), marking as FATAL\n", event.Name, event.Err, process.retries, process.Config.StartRetries)
-			s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has crashed: %v. Restart attempts exhausted (%d/%d), marking as FATAL", event.Name, process.pid, event.Err, process.retries, process.Config.StartRetries))
+			fmt.Printf("[DEBUG] Process '%s' has terminated. Restart attempts exhausted (%d/%d), marking as FATAL\n", event.Name, process.retries, process.Config.StartRetries)
+			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Restart attempts exhausted (%d/%d), marking as FATAL", event.Name, process.retries, process.Config.StartRetries))
 			process.state = FATAL
 			process.pid = 0
 			process.retries = 0
@@ -420,6 +427,10 @@ func getSignalByName(name string) syscall.Signal {
 	}
 }
 
+// The stopProcess function is responsible for stopping a process when a stop event is received.
+// It attempts to gracefully stop the process by sending the signal specified in the config,
+// changes its state to STOPPING and waiting for it to exit.
+// If the process does not exit within the StopTime specified in the config, it SIG-kills it.
 func (s *Supervisor) stopProcess(name string) error {
 
 	cfg := s.Config.Programs[name]
@@ -428,8 +439,8 @@ func (s *Supervisor) stopProcess(name string) error {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
 	}
 
-	if process.state != RUNNING && process.state != STARTING {
-		return fmt.Errorf("process '%s' is not RUNNING or STARTING, cannot stop", name)
+	if process.state != RUNNING && process.state != STARTING && process.state != BACKOFF {
+		return fmt.Errorf("process '%s' is not STARTING, RUNNING or BACKOFF - cannot stop", name)
 	}
 
 	signal := getSignalByName(cfg.StopSignal)
