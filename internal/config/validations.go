@@ -9,6 +9,7 @@ var ErrInvalidPath = errors.New("detected forbidden null character")
 var ErrNumSPos = errors.New("must be a positive integer > 0")
 var ErrNumPos = errors.New("must be a positive integer >= 0")
 var ErrUmask = errors.New("invalid umask code")
+var ErrAutoStart = errors.New("invalid keyword for AutoStart")
 var ErrAutoRestart = errors.New("invalid keyword for AutoRestart")
 var ErrStopSignal = errors.New("invalid keyword for StopSignal")
 var ErrEnvFormat = errors.New("invalid env format")
@@ -43,7 +44,7 @@ func ispositivedigit(input any, strict bool) error {
 }
 
 func validautorestart(str string) error {
-	var allowed = []string{"true", "false", "unexpected"}
+	var allowed = []string{"always", "unexpected", "never"}
 	for _, value := range allowed {
 		if str == value {
 			return nil
