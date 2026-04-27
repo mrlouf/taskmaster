@@ -116,7 +116,7 @@ func (s *Supervisor) autoStartProcesses() {
 		s.Processes[name] = process
 
 		if program.AutoStart {
-			s.Logger.Log(fmt.Sprintf("Auto-STARTING program '%s' with command: %s", name, program.Command))
+			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
 			err := s.startProcess(name)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
@@ -224,9 +224,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	}
 
 	err := <-waitDone
-	process.mu.Lock()
 	process.done <- err
-	process.mu.Unlock()
 
 	// s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
 }
@@ -248,7 +246,7 @@ func (s *Supervisor) startProcess(name string) error {
 	cfg := s.Config.Programs[name]
 	process, exists := s.Processes[name]
 	if !exists {
-		fmt.Printf("[DEBUG] Process '%s' not found in supervisor, STARTING\n", name)
+		fmt.Printf("[DEBUG] Process '%s' not found in supervisor, starting\n", name)
 		process = &Process{Name: name, Config: &cfg}
 		s.Processes[name] = process
 	}
@@ -443,13 +441,13 @@ func (s *Supervisor) stopProcess(name string) error {
 		return fmt.Errorf("process '%s' is not STARTING, RUNNING or BACKOFF - cannot stop", name)
 	}
 
-	signal := getSignalByName(cfg.StopSignal)
-	fmt.Printf("Sending signal %s to process '%s' with PID %d\n", cfg.StopSignal, name, process.pid)
-	process.cmd.Process.Signal(signal)
-
 	process.mu.Lock()
 	process.state = STOPPING
 	process.mu.Unlock()
+
+	signal := getSignalByName(cfg.StopSignal)
+	fmt.Printf("Sending signal %s to process '%s' with PID %d\n", cfg.StopSignal, name, process.pid)
+	process.cmd.Process.Signal(signal)
 
 	// Wait for the process to exit gracefully,
 	// but if it doesn't exit within the StopTime, force kill it
