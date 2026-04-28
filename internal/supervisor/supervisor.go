@@ -95,7 +95,7 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 		Config:    config,
 		Logger:    logger,
 		Processes: make(map[string]*Process),
-		Events:    make(chan Event, 100),
+		Events:    make(chan Event, 100), // ! 100 is arbitrary
 		Ready:     make(chan bool, 1),
 	}
 

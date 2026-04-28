@@ -61,6 +61,46 @@ func getConfFilePath() string {
 
 }
 
+func setDefaults(config *Config) {
+
+	for name, program := range config.Programs {
+
+		fmt.Println(name)
+
+		if program.NumProcs == 0 {
+			program.NumProcs = 1
+		}
+		if program.Umask == 0 {
+			program.Umask = 0o022
+		}
+		if program.WorkingDir == "" {
+			program.WorkingDir = "/tmp"
+		}
+		if program.AutoRestart == "" {
+			program.AutoRestart = "unexpected"
+		}
+		if len(program.ExitCodes) == 0 {
+			program.ExitCodes = []int{0}
+		}
+		if program.StopSignal == "" {
+			program.StopSignal = "TERM"
+		}
+		if program.StopTime == 0 {
+			program.StopTime = 10
+		}
+		if program.Stdout == "" {
+			program.Stdout = fmt.Sprintf("/tmp/%s.stdout", program.Command)
+		}
+		if program.Stderr == "" {
+			program.Stderr = fmt.Sprintf("/tmp/%s.stderr", program.Command)
+		}
+		// * Note: since program is a copy of the struct in the map,
+		// * we need to assign it back to the map after modifying it.
+		config.Programs[name] = program
+	}
+
+}
+
 func getNodeConfig(file *os.File) (Config, error) {
 	var cfg Config
 
@@ -75,6 +115,8 @@ func getNodeConfig(file *os.File) (Config, error) {
 	if err = yaml.Load(loader, &cfg, yaml.WithKnownFields()); err != nil {
 		return cfg, err
 	}
+
+	setDefaults(&cfg)
 
 	return cfg, nil
 }
