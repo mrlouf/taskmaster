@@ -476,8 +476,8 @@ func (s *Supervisor) stopProcess(name string) error {
 
 func (s *Supervisor) Start() {
 
+	fmt.Printf("Starting processes from config file located in '%s'\n", s.Config.ConfigPath)
 	s.autoStartProcesses()
-
 	s.Ready <- true
 
 	for event := range s.Events {

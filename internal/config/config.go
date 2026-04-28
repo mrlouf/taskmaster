@@ -47,7 +47,8 @@ type Program struct {
 }
 
 type Config struct {
-	Programs map[string]Program `yaml:"programs"`
+	Programs   map[string]Program `yaml:"programs"`
+	ConfigPath string
 }
 
 func getConfFilePath() string {
@@ -64,10 +65,6 @@ func getConfFilePath() string {
 func getNodeConfig(file *os.File) (Config, error) {
 	var cfg Config
 
-	// loader, err := yaml.NewLoader(file)
-	// if err != nil {
-	// 	return config, err
-	// }
 	loader, err := io.ReadAll(file)
 	if err != nil {
 		return cfg, err
@@ -75,7 +72,6 @@ func getNodeConfig(file *os.File) (Config, error) {
 	if err = yaml.Load(loader, &cfg, yaml.WithKnownFields()); err != nil {
 		return cfg, err
 	}
-
 	return cfg, nil
 }
 
@@ -90,6 +86,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while parsing file '%s': %w", path, err)
 	}
+	cfg.ConfigPath = path
 	if err = validate(&cfg); err != nil {
 		// fmt.Printf("err %v", err)
 		return nil, fmt.Errorf("configuration file format error '%s':\n%w", path, err)
