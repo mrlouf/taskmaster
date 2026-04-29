@@ -238,7 +238,7 @@ func HandleStart(client Client, name string, server *Server) error {
 		server.Logger.Log(fmt.Sprintf("Starting program '%s' with command: %s", name, program.Command))
 
 		event := supervisor.Event{
-			Kind:   supervisor.EventStartProcess,
+			Kind:   supervisor.EventStartProgram,
 			Name:   name,
 			RespCh: make(chan protocol.Response),
 		}
@@ -291,7 +291,7 @@ func HandleStop(client Client, name string, server *Server) error {
 
 		server.Logger.Log(fmt.Sprintf("Stopping program '%s' with command: %s", name, program.Command))
 		event := supervisor.Event{
-			Kind:   supervisor.EventStopProcess,
+			Kind:   supervisor.EventStopProgram,
 			Name:   name,
 			RespCh: make(chan protocol.Response),
 		}
