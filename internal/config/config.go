@@ -134,6 +134,7 @@ func (c *Config) addProgram(p *Program, name string) {
 }
 
 func (p *Program) copyProgram() *Program {
+	fmt.Printf("[DEBUG] Copy Program\n")
 	copyprog := &Program{
 		Command:      p.Command,
 		NumProcs:     p.NumProcs,
@@ -150,9 +151,7 @@ func (p *Program) copyProgram() *Program {
 	}
 	if p.ExitCodes != nil {
 		copyprog.ExitCodes = make(IntOrSlice, len(p.ExitCodes))
-		for k, v := range p.ExitCodes {
-			copyprog.ExitCodes[k] = v
-		}
+		copy(copyprog.ExitCodes, p.ExitCodes)
 	}
 	if p.Env != nil {
 		copyprog.Env = make(map[string]string, len(p.Env))
@@ -163,25 +162,31 @@ func (p *Program) copyProgram() *Program {
 	return copyprog
 }
 
-func ReloadConfig(Current *Config) *Config {
-	var Deletion *Config
-
+func ReloadConfig(Current *Config) (*Config, error) {
+	Deletion := &Config{}
+	fmt.Printf("[DEBUG] Starting reloading new file\n")
 	NewCfg, err := LoadConfig(Current.ConfigPath)
 	if err != nil {
-		return nil
+		return nil, err
 	}
+	fmt.Printf("[DEBUG] New config file reloaded\n")
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
+			fmt.Printf("[DEBUG] Program %s not found in new file, to be deleted\n", name)
 			Deletion.addProgram(&program, name)
+			fmt.Printf("[DEBUG] Added to Deletion\n")
 			delete(Current.Programs, name)
+			fmt.Printf("[DEBUG] Deleted\n")
 		} else {
+			fmt.Printf("[DEBUG] Updating current config\n")
 			Current.Programs[name] = NewCfg.Programs[name]
 		}
 	}
 	for name, program := range NewCfg.Programs {
 		if !Current.existingProgram(name) {
+			fmt.Printf("[DEBUG] Adding new program to config\n")
 			Current.addProgram(&program, name)
 		}
 	}
-	return Deletion
+	return Deletion, nil
 }
