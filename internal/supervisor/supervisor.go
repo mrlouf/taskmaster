@@ -73,6 +73,7 @@ type Process struct {
 	Name   string
 	Config *config.Program
 
+	idx       int
 	cmd       *exec.Cmd
 	state     State
 	mu        sync.Mutex
@@ -85,7 +86,7 @@ type Process struct {
 type Supervisor struct {
 	Config    *config.Config
 	Logger    *logger.Logger
-	Processes map[string]*Process
+	Processes map[string][]*Process
 	Events    chan Event
 	Ready     chan bool
 }
@@ -95,7 +96,7 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 	return &Supervisor{
 		Config:    config,
 		Logger:    logger,
-		Processes: make(map[string]*Process),
+		Processes: make(map[string][]*Process),
 		Events:    make(chan Event, 100), // ! 100 is arbitrary
 		Ready:     make(chan bool, 1),
 	}
@@ -108,13 +109,17 @@ func (s *Supervisor) autoStartProcesses() {
 	// * using goroutines and a WaitGroup, but it could also be risky and probably overkill
 	for name, program := range s.Config.Programs {
 
-		process := &Process{
-			Name:    name,
-			Config:  &program,
-			state:   STOPPED,
-			retries: 0,
+		for i := 0; i < program.NumProcs; i++ {
+			process := &Process{
+				Name:    name,
+				Config:  &program,
+				state:   STOPPED,
+				retries: 0,
+				idx:     i,
+			}
+			s.Processes[name] = append(s.Processes[name], process)
+
 		}
-		s.Processes[name] = process
 
 		if program.AutoStart {
 			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
@@ -133,43 +138,46 @@ func (s *Supervisor) handleShutdown() {
 
 	var wg sync.WaitGroup
 
-	for name, process := range s.Processes {
+	for name, processes := range s.Processes {
 
-		// Handle the stopping of each process in a separate goroutine
-		// instead of sending events to the main event loop
-		// to avoid potential deadlocks and ensure a faster shutdown
-		wg.Go(func() {
+		for _, process := range processes {
 
-			process.mu.Lock()
-			defer process.mu.Unlock()
+			// Handle the stopping of each process in a separate goroutine
+			// instead of sending events to the main event loop
+			// to avoid potential deadlocks and ensure a faster shutdown
+			wg.Go(func() {
 
-			// ! Override restart policy to prevent any restarts during shutdown
-			process.Config.AutoRestart = "never"
+				process.mu.Lock()
+				defer process.mu.Unlock()
 
-			if process.state == RUNNING ||
-				process.state == STARTING ||
-				process.state == BACKOFF {
+				// ! Override restart policy to prevent any restarts during shutdown
+				process.Config.AutoRestart = "never"
 
-				cfg := s.Config.Programs[name]
+				if process.state == RUNNING ||
+					process.state == STARTING ||
+					process.state == BACKOFF {
 
-				signal := syscall.SIGTERM
-				fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
-				process.cmd.Process.Signal(signal)
+					cfg := s.Config.Programs[name]
 
-				select {
-				case process.cmd.Err = <-process.done:
-					fmt.Printf("[DEBUG] Process '%s' has exited gracefully\n", name)
-					s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited gracefully", name, process.pid))
+					signal := syscall.SIGTERM
+					fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
+					process.cmd.Process.Signal(signal)
 
-				case <-time.After(time.Duration(cfg.StopTime) * time.Second):
-					process.cmd.Process.Kill()
-					process.cmd.Err = <-process.done
+					select {
+					case process.cmd.Err = <-process.done:
+						fmt.Printf("[DEBUG] Process '%s' has exited gracefully\n", name)
+						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited gracefully", name, process.pid))
 
-					fmt.Printf("[DEBUG] Process '%s' did not exit gracefully, sent KILL signal\n", name)
-					s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
+					case <-time.After(time.Duration(cfg.StopTime) * time.Second):
+						process.cmd.Process.Kill()
+						process.cmd.Err = <-process.done
+
+						fmt.Printf("[DEBUG] Process '%s' did not exit gracefully, sent KILL signal\n", name)
+						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 
 	wg.Wait()
@@ -181,17 +189,23 @@ func (s *Supervisor) handleShutdown() {
 
 func (s *Supervisor) GetStatus(name string) string {
 
-	process, exists := s.Processes[name]
+	processes, exists := s.Processes[name]
 	if !exists {
 		return fmt.Sprintf("'%s' not found", name)
 	}
 
-	process.mu.Lock()
-	state := process.state.String()
-	pid := process.pid
-	process.mu.Unlock()
+	status := fmt.Sprintf("'%s':\n", name)
 
-	return fmt.Sprintf("%s\t\t\t%s pid %d", name, state, pid)
+	for i, process := range processes {
+
+		process.mu.Lock()
+		state := process.state.String()
+		pid := process.pid
+		process.mu.Unlock()
+		status += fmt.Sprintf("  - Instance %d with PID %d is in state %s\n", i, pid, state)
+	}
+
+	return status
 
 }
 
@@ -216,12 +230,12 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 
 		startTimer.Stop()
 		process.done <- err
-		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 		return
 
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
-		s.Events <- Event{Kind: EventProcessReady, Name: process.Name}
+		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx}
 	}
 
 	err := <-waitDone
@@ -245,70 +259,71 @@ func convertEnvMapToSlice(envMap map[string]string) []string {
 func (s *Supervisor) startProcess(name string) error {
 
 	cfg := s.Config.Programs[name]
-	process, exists := s.Processes[name]
+	processes, exists := s.Processes[name]
 	if !exists {
-		fmt.Printf("[DEBUG] Process '%s' not found in supervisor, starting\n", name)
-		process = &Process{Name: name, Config: &cfg}
-		s.Processes[name] = process
+		return fmt.Errorf("process '%s' not found in taskmasterd\n", name)
 	}
 
-	process.mu.Lock()
-	isActive := process.state == RUNNING || process.state == STARTING
-	process.mu.Unlock()
+	for _, process := range processes {
 
-	if exists && isActive {
-		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, process.pid)
-	}
+		process.mu.Lock()
+		isActive := process.state == RUNNING || process.state == STARTING
+		process.mu.Unlock()
 
-	args := strings.Fields(cfg.Command)
-	cmd := exec.Command(args[0], args[1:]...)
+		if exists && isActive {
+			return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, process.pid)
+		}
 
-	env := os.Environ()
-	env = append(env, convertEnvMapToSlice(cfg.Env)...)
-	cmd.Env = env
-	cmd.Dir = cfg.WorkingDir
+		args := strings.Fields(cfg.Command)
+		cmd := exec.Command(args[0], args[1:]...)
 
-	// TODO: handle stdout/stderr redirection to files if specified in config
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+		env := os.Environ()
+		env = append(env, convertEnvMapToSlice(cfg.Env)...)
+		cmd.Env = env
+		cmd.Dir = cfg.WorkingDir
 
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start process '%s': %w", name, err)
-	}
+		// TODO: handle stdout/stderr redirection to files if specified in config
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 
-	process.cmd = cmd
-	process.pid = cmd.Process.Pid
-	process.startedAt = time.Now()
-	process.mu.Lock()
-	process.state = STARTING
-	process.mu.Unlock()
-	process.done = make(chan error, 1)
+		err := cmd.Start()
+		if err != nil {
+			return fmt.Errorf("failed to start process '%s': %w", name, err)
+		}
 
-	go s.monitorProcess(process, cfg)
+		process.cmd = cmd
+		process.pid = cmd.Process.Pid
+		process.startedAt = time.Now()
+		process.mu.Lock()
+		process.state = STARTING
+		process.mu.Unlock()
+		process.done = make(chan error, 1)
 
-	if process.retries > 0 {
-		s.Logger.Log(fmt.Sprintf("Restarted process '%s' with PID %d (retry %d)", name, process.pid, process.retries))
-	} else {
-		s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", name, process.pid))
+		go s.monitorProcess(process, cfg)
+
+		if process.retries > 0 {
+			s.Logger.Log(fmt.Sprintf("Restarted process '%s' with PID %d (retry %d)", name, process.pid, process.retries))
+		} else {
+			s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", name, process.pid))
+		}
 	}
 
 	return nil
 }
 
-func (s *Supervisor) handleReady(name string) error {
+func (s *Supervisor) handleReady(name string, index int) error {
 
-	process, exists := s.Processes[name]
+	processes, exists := s.Processes[name]
 	if !exists {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
 	}
 
-	if process.state != STARTING {
+	if processes[index].state != STARTING {
 		return fmt.Errorf("process '%s' is not in STARTING state, cannot transition to ready", name)
 	}
 
-	process.state = RUNNING
-	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d is now RUNNING", name, process.pid))
+	processes[index].state = RUNNING
+	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d is now RUNNING", name, processes[index].pid))
 
 	return nil
 }
@@ -328,13 +343,15 @@ func didProcessExitExpectedly(state *os.ProcessState, cfg config.Program) bool {
 // to the main event loop which will the trigger this handler. Its role is to triage
 // the process's death and decide whether it should be revived or not based on the state,
 // the restart policy and the number of retries already attempted.
-func (s *Supervisor) handleDied(event Event) {
+func (s *Supervisor) handleDied(event Event, index int) {
 
-	process, exists := s.Processes[event.Name]
+	processes, exists := s.Processes[event.Name]
 	if !exists {
 		s.Logger.Log(fmt.Sprintf("Received process died event for unknown process '%s'", event.Name))
 		return
 	}
+
+	process := processes[index]
 
 	process.mu.Lock()
 	defer process.mu.Unlock()
@@ -434,43 +451,51 @@ func getSignalByName(name string) syscall.Signal {
 func (s *Supervisor) stopProcess(name string) error {
 
 	cfg := s.Config.Programs[name]
-	process, exists := s.Processes[name]
+	processes, exists := s.Processes[name]
 	if !exists {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
 	}
 
-	if process.state != RUNNING && process.state != STARTING && process.state != BACKOFF {
-		return fmt.Errorf("process '%s' is not STARTING, RUNNING or BACKOFF - cannot stop", name)
+	for _, process := range processes {
+
+		process.mu.Lock()
+		isActive := process.state == RUNNING || process.state == STARTING || process.state == BACKOFF
+		process.mu.Unlock()
+
+		if !isActive {
+			return fmt.Errorf("process '%s' is not RUNNING, STARTING or BACKOFF - cannot stop", name)
+		}
+
+		process.mu.Lock()
+		process.state = STOPPING
+		process.mu.Unlock()
+
+		signal := getSignalByName(cfg.StopSignal)
+		fmt.Printf("Sending signal %s to process '%s' with PID %d\n", cfg.StopSignal, name, process.pid)
+		process.cmd.Process.Signal(signal)
+
+		// Wait for the process to exit gracefully,
+		// but if it doesn't exit within the StopTime, force kill it
+		select {
+		case process.cmd.Err = <-process.done:
+
+		case <-time.After(time.Duration(cfg.StopTime) * time.Second):
+			process.cmd.Process.Kill()
+			process.cmd.Err = <-process.done
+		}
+
+		// Reset process state and metadata after it has stopped
+		process.mu.Lock()
+		process.state = STOPPED
+		process.retries = 0
+		process.done = nil
+		process.pid = 0
+		process.mu.Unlock()
+
+		fmt.Printf("[DEBUG] Process '%s' has been STOPPED\n", name)
+		s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", name))
+
 	}
-
-	process.mu.Lock()
-	process.state = STOPPING
-	process.mu.Unlock()
-
-	signal := getSignalByName(cfg.StopSignal)
-	fmt.Printf("Sending signal %s to process '%s' with PID %d\n", cfg.StopSignal, name, process.pid)
-	process.cmd.Process.Signal(signal)
-
-	// Wait for the process to exit gracefully,
-	// but if it doesn't exit within the StopTime, force kill it
-	select {
-	case process.cmd.Err = <-process.done:
-
-	case <-time.After(time.Duration(cfg.StopTime) * time.Second):
-		process.cmd.Process.Kill()
-		process.cmd.Err = <-process.done
-	}
-
-	// Reset process state and metadata after it has stopped
-	process.mu.Lock()
-	process.state = STOPPED
-	process.retries = 0
-	process.done = nil
-	process.pid = 0
-	process.mu.Unlock()
-
-	fmt.Printf("[DEBUG] Process '%s' has been STOPPED\n", name)
-	s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", name))
 
 	return nil
 
@@ -488,12 +513,12 @@ func (s *Supervisor) Start() {
 		case EventProcessDied:
 
 			fmt.Printf("[DEBUG] Received process died event for program '%s'\n", event.Name)
-			s.handleDied(event)
+			s.handleDied(event, event.Index)
 
 		case EventProcessReady:
 
 			fmt.Printf("[DEBUG] Received process ready event for program '%s'\n", event.Name)
-			err := s.handleReady(event.Name)
+			err := s.handleReady(event.Name, event.Index)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to handle ready event for program '%s': %v", event.Name, err))
 			}
