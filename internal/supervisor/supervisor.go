@@ -23,6 +23,8 @@ const (
 	EventProcessReady
 	EventStartProgram
 	EventStopProgram
+	EventStartProcess
+	EventStopProcess
 	EventRestartProcess
 	EventReloadConfig
 	EventShutdown
@@ -134,14 +136,14 @@ func (s *Supervisor) autoStartProcesses() {
 
 func (s *Supervisor) handleShutdown() {
 
-	fmt.Printf("[DEBUG] Received shutdown event, STOPPING supervisor...\n")
+	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
 
 	// ! Override restart policy to prevent any restarts during shutdown
-	for cfgName, cfg := range s.Config.Programs {
-		fmt.Printf("[DEBUG] Setting restart policy of program '%s' to 'never' for shutdown\n", cfgName)
-		s.Logger.Log(fmt.Sprintf("Setting restart policy of program '%s' to 'never' for shutdown", cfgName))
+	for program := range s.Config.Programs {
+		cfg := s.Config.Programs[program]
 		cfg.AutoRestart = "never"
+		s.Config.Programs[program] = cfg
 	}
 
 	var wg sync.WaitGroup
@@ -199,7 +201,8 @@ func (s *Supervisor) GetStatus(name string) string {
 		return fmt.Sprintf("'%s' not found", name)
 	}
 
-	status := fmt.Sprintf("'%s':\n", name)
+	str := strings.Builder{}
+	str.WriteString(fmt.Sprintf("'%s':\n", name))
 
 	for i, process := range processes {
 
@@ -207,8 +210,21 @@ func (s *Supervisor) GetStatus(name string) string {
 		state := process.state.String()
 		pid := process.pid
 		process.mu.Unlock()
-		status += fmt.Sprintf("  - Instance %d with PID %d is in state %s\n", i, pid, state)
+		if i == process.Config.NumProcs-1 {
+			str.WriteString("  └── ")
+		} else {
+			str.WriteString("  ├── ")
+		}
+
+		str.WriteString(fmt.Sprintf("process %d %s", i, state))
+		if pid != 0 {
+			str.WriteString(fmt.Sprintf(": PID %d\n", pid))
+		} else {
+			str.WriteString("\n")
+		}
 	}
+
+	status := str.String()
 
 	return status
 
@@ -246,7 +262,8 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	err := <-waitDone
 	process.done <- err
 
-	// s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Err: err}
+	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
+
 }
 
 // Helper function to convert env map to slice of "KEY=VALUE" strings
@@ -261,6 +278,8 @@ func convertEnvMapToSlice(envMap map[string]string) []string {
 	return env
 }
 
+// Wrapper function to start a program by name, which will in turn
+// call the startProcess function for each subprocess of the program.
 func (s *Supervisor) startProgram(name string) error {
 
 	cfg := s.Config.Programs[name]
@@ -374,6 +393,11 @@ func (s *Supervisor) handleDied(event Event, index int) {
 	process.mu.Lock()
 	defer process.mu.Unlock()
 
+	// Ignore if the process is manually stopping or has already been stopped
+	if process.state == STOPPING || process.state == STOPPED {
+		return
+	}
+
 	restartPolicy := process.Config.AutoRestart
 	expectedExit := didProcessExitExpectedly(process.cmd.ProcessState, *process.Config)
 
@@ -391,7 +415,12 @@ func (s *Supervisor) handleDied(event Event, index int) {
 
 		fmt.Printf("[DEBUG] Process '%s' has terminated. Restart policy is 'always', attempting restart\n", event.Name)
 		s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Restart policy is 'always', attempting restart", event.Name))
-		event := Event{Kind: EventStartProgram, Name: event.Name}
+
+		process.state = EXITED
+		process.retries = 0
+		process.pid = 0
+
+		event := Event{Kind: EventStartProcess, Name: event.Name, Index: event.Index}
 		s.Events <- event
 
 	case "unexpected":
@@ -425,7 +454,7 @@ func (s *Supervisor) handleDied(event Event, index int) {
 				// n+1 seconds before each restart attempt, where n is the number of retries already attempted.
 				time.Sleep(time.Duration(process.retries) * time.Second)
 
-				event := Event{Kind: EventStartProgram, Name: event.Name}
+				event := Event{Kind: EventStartProcess, Name: event.Name, Index: event.Index}
 				s.Events <- event
 			}()
 
@@ -569,6 +598,22 @@ func (s *Supervisor) Start() {
 
 			fmt.Printf("[DEBUG] Received stop event for program '%s'\n", event.Name)
 			err := s.stopProgram(event.Name)
+			if event.RespCh != nil {
+				event.RespCh <- protocol.Response{Ok: err == nil}
+			}
+
+		case EventStartProcess:
+
+			fmt.Printf("[DEBUG] Received start event for process '%s' %d\n", event.Name, event.Index)
+			err := s.startProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
+			if event.RespCh != nil {
+				event.RespCh <- protocol.Response{Ok: err == nil}
+			}
+
+		case EventStopProcess:
+
+			fmt.Printf("[DEBUG] Received stop event for process '%s' %d\n", event.Name, event.Index)
+			err := s.stopProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
 			}

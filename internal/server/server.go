@@ -217,10 +217,15 @@ func RequestStart(client Client, name string) error {
 	}
 
 	if !resp.Ok {
+		if strings.Contains(resp.Msg, "RUNNING") {
+			return fmt.Errorf("program '%s' is already running", name)
+		} else if strings.Contains(resp.Msg, "STARTING") {
+			return fmt.Errorf("program '%s' is already starting", name)
+		}
 		return fmt.Errorf("start command: %s", resp.Msg)
 	}
 
-	fmt.Printf("Successful start: %s\n", resp.Msg)
+	fmt.Printf("Program '%s' started\n", name)
 
 	return nil
 }
@@ -231,8 +236,20 @@ func HandleStart(client Client, name string, server *Server) error {
 
 	program, exists := server.Config.Programs[name]
 	if !exists {
+
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
+
 	} else {
 
 		server.Logger.Log(fmt.Sprintf("Starting program '%s' with command: %s", name, program.Command))
@@ -271,10 +288,10 @@ func RequestStop(client Client, name string) error {
 	}
 
 	if !resp.Ok {
-		return fmt.Errorf("stop command failed: %s", resp.Msg)
+		return fmt.Errorf("stop command: %s", resp.Msg)
 	}
 
-	fmt.Printf("Successful stop: %s\n", resp.Msg)
+	fmt.Printf("Program '%s' stopped\n", name)
 
 	return nil
 }
@@ -285,8 +302,20 @@ func HandleStop(client Client, name string, server *Server) error {
 
 	program, exists := server.Config.Programs[name]
 	if !exists {
+
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "STOPPING") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already stopping", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "STOPPED") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already stopped", name)
+
 	} else {
 
 		server.Logger.Log(fmt.Sprintf("Stopping program '%s' with command: %s", name, program.Command))
@@ -295,11 +324,10 @@ func HandleStop(client Client, name string, server *Server) error {
 			Name:   name,
 			RespCh: make(chan protocol.Response),
 		}
+
 		server.Supervisor.Events <- event
 		resp = <-event.RespCh
 
-		resp.Ok = true
-		resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {

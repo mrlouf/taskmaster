@@ -116,9 +116,6 @@ func getNodeConfig(file *os.File) (Config, error) {
 
 	setDefaults(&cfg)
 
-	// * DEBUG
-	fmt.Printf("\ncfg: %v\n\n", cfg)
-
 	return cfg, nil
 }
 
