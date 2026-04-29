@@ -1,7 +1,6 @@
 package config
 
 import (
-	// "errors"
 	"flag"
 	"fmt"
 	"io"
@@ -75,9 +74,11 @@ func getNodeConfig(file *os.File) (Config, error) {
 	return cfg, nil
 }
 
-func LoadConfig() (*Config, error) {
+func LoadConfig(path string) (*Config, error) {
 	//open file
-	path := getConfFilePath()
+	if path == "" {
+		path = getConfFilePath()
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("config file '%s': %w", path, err)
@@ -93,3 +94,16 @@ func LoadConfig() (*Config, error) {
 	}
 	return &cfg, nil
 }
+
+/*func ReloadConfig(curcfg *Config) (*Config, *Config, error) {
+	var oldcfg Config
+	var newcfg Config
+
+	newcfg =
+
+	oldcfg = *curcfg
+	for name, program := range curcfg.Programs {
+
+	}
+
+}*/

@@ -30,8 +30,18 @@ func handleSigterm(s *supervisor.Supervisor) {
 }
 
 func handleSighup(s *supervisor.Supervisor) {
-	s.Logger.Log("Received sighup signal, reloading...")
+	s.Logger.Log("Received SIGHUP signal, reloading...")
 	fmt.Printf("[DEBUG]: processing SIGHUP and reloading config\n")
+	/*
+		event := supervisor.Event{
+			Kind:   supervisor.EventReloadConfig,
+			RespCh: make(chan protocol.Response),
+		}
+		s.Events <- event
+		resp := <-event.RespCh
+		if !resp.Ok {
+			s.Logger.Log(fmt.Sprintf("Failed to reload supervisor gracefully: %s", resp.Msg))
+		}*/
 }
 
 func waitForSignals(s *supervisor.Supervisor) {
@@ -58,7 +68,7 @@ func run() error {
 	//_ = os.Remove("/tmp/taskmasterd.pid")                   //remove if already exists
 	//os.WriteFile("/tmp/taskmasterd.pid", []byte(strconv.Itoa(pid)), 0666) //permissions?
 
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
