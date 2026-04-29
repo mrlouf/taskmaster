@@ -139,12 +139,12 @@ func (s *Supervisor) handleShutdown() {
 	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
 
-	// ! Override restart policy to prevent any restarts during shutdown
-	for program := range s.Config.Programs {
-		cfg := s.Config.Programs[program]
-		cfg.AutoRestart = "never"
-		s.Config.Programs[program] = cfg
-	}
+	/* 	// ! Override restart policy to prevent any restarts during shutdown
+	   	for program := range s.Config.Programs {
+	   		cfg := s.Config.Programs[program]
+	   		cfg.AutoRestart = "never"
+	   		s.Config.Programs[program] = cfg
+	   	} */
 
 	var wg sync.WaitGroup
 

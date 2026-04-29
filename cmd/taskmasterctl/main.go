@@ -185,7 +185,16 @@ func connectToSocket() (server.Client, error) {
 	return c, nil
 }
 
-func setReadlineAutocomplete(rl *readline.Instance) {
+func setReadlineAutocomplete(rl *readline.Instance, c *server.Client) {
+
+	programs, err := server.RequestProgramList(*c)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Println("Available programs for autocomplete:", programs)
+
+	// TODO: Implement dynamic autocomplete that updates the list of programs after each command execution
 
 	rl.Config.AutoComplete = readline.NewPrefixCompleter(
 		readline.PcItem("start"),
@@ -223,7 +232,7 @@ func run() error {
 	}
 	defer rl.Close()
 
-	setReadlineAutocomplete(rl)
+	setReadlineAutocomplete(rl, &client)
 
 	for {
 		line, err := rl.Readline()

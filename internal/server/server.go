@@ -143,6 +143,10 @@ func handleRequest(client Client, req protocol.Request, server *Server) error {
 
 		err = HandleHealthCheck(client, server)
 
+	case "list":
+
+		err = HandleProgramList(client, server)
+
 	default:
 		return fmt.Errorf("unknown command: %s", req.Cmd)
 	}
@@ -588,4 +592,23 @@ func RequestProgramList(client Client) ([]string, error) {
 
 	return programs, nil
 
+}
+
+func HandleProgramList(client Client, server *Server) error {
+
+	var resp protocol.Response
+
+	var programNames []string
+	for name := range server.Config.Programs {
+		programNames = append(programNames, name)
+	}
+
+	resp.Ok = true
+	resp.Msg = strings.Join(programNames, "\n")
+
+	if err := client.Enc.Encode(resp); err != nil {
+		return fmt.Errorf("failed to send list response: %w", err)
+	}
+
+	return nil
 }
