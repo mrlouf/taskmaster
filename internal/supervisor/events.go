@@ -91,7 +91,12 @@ func (s *Supervisor) startProcess(name string) error { //events.go
 	process, exists := s.Processes[name]
 	if !exists {
 		fmt.Printf("[DEBUG] Process '%s' not found in supervisor, starting\n", name)
-		process = &Process{Name: name, Config: &cfg}
+		process = &Process{
+			Name:    name,
+			Config:  &cfg,
+			state:   STOPPED,
+			retries: 0,
+		}
 		s.Processes[name] = process
 	}
 
