@@ -163,12 +163,12 @@ func (p *Program) copyProgram() *Program {
 	return copyprog
 }
 
-func ReloadConfig(Current *Config, path string) (*Config, error) {
+func ReloadConfig(Current *Config) *Config {
 	var Deletion *Config
 
-	NewCfg, err := LoadConfig(path)
+	NewCfg, err := LoadConfig(Current.ConfigPath)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
@@ -178,11 +178,10 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 			Current.Programs[name] = NewCfg.Programs[name]
 		}
 	}
-
 	for name, program := range NewCfg.Programs {
 		if !Current.existingProgram(name) {
 			Current.addProgram(&program, name)
 		}
 	}
-	return Deletion, nil
+	return Deletion
 }

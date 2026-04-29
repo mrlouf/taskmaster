@@ -77,7 +77,21 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 		Events:    make(chan Event, 100),
 		Ready:     make(chan bool, 1),
 	}
+}
 
+func (s *Supervisor) Reload() {
+	ToDel := config.ReloadConfig(s.Config)
+	if ToDel != nil {
+		for name := range ToDel.Programs {
+			s.stopProcess(name)
+		}
+		ToDel = nil
+		// if s.existingProcess(s.Config, process, procName) == true {
+
+		// } else {//demarre le process si autostart
+
+		// }
+	}
 }
 
 func (s *Supervisor) autoStartProcesses() {
