@@ -79,9 +79,10 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 	}
 }
 
-func (s *Supervisor) Reload() {
-	ToDel := config.ReloadConfig(s.Config)
-	if ToDel != nil {
+func (s *Supervisor) handleReload() error {
+	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
+		return err
+	} else if ToDel != nil {
 		for name := range ToDel.Programs {
 			s.stopProcess(name)
 		}
@@ -94,6 +95,7 @@ func (s *Supervisor) Reload() {
 			}
 		}
 	}
+	return nil
 }
 
 func (s *Supervisor) autoStartProcesses() {
@@ -263,8 +265,12 @@ func (s *Supervisor) Start() {
 				event.RespCh <- protocol.Response{Ok: err == nil}
 			}
 
-			/* case EventReloadConfig:
-			s.handleReload() */
+		case EventReloadConfig:
+			fmt.Printf("[DEBUG] Received reload event\n")
+			err := s.handleReload()
+			if event.RespCh != nil {
+				event.RespCh <- protocol.Response{Ok: err == nil}
+			}
 
 		case EventShutdown:
 

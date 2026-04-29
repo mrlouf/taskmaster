@@ -32,16 +32,16 @@ func handleSigterm(s *supervisor.Supervisor) {
 func handleSighup(s *supervisor.Supervisor) {
 	s.Logger.Log("Received SIGHUP signal, reloading...")
 	fmt.Printf("[DEBUG]: processing SIGHUP and reloading config\n")
-	/*
-		event := supervisor.Event{
-			Kind:   supervisor.EventReloadConfig,
-			RespCh: make(chan protocol.Response),
-		}
-		s.Events <- event
-		resp := <-event.RespCh
-		if !resp.Ok {
-			s.Logger.Log(fmt.Sprintf("Failed to reload supervisor gracefully: %s", resp.Msg))
-		}*/
+
+	event := supervisor.Event{
+		Kind:   supervisor.EventReloadConfig,
+		RespCh: make(chan protocol.Response),
+	}
+	s.Events <- event
+	resp := <-event.RespCh
+	if !resp.Ok {
+		s.Logger.Log(fmt.Sprintf("Failed to reload supervisor gracefully: %s", resp.Msg))
+	}
 }
 
 func waitForSignals(s *supervisor.Supervisor) {
