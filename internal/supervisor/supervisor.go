@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -259,7 +260,8 @@ func (s *Supervisor) startProcess(name string) error {
 		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, process.pid)
 	}
 
-	cmd := exec.Command(cfg.Command)
+	args := strings.Fields(cfg.Command)
+	cmd := exec.Command(args[0], args[1:]...)
 
 	env := os.Environ()
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)

@@ -537,3 +537,27 @@ func HandleHealthCheck(client Client, server *Server) error {
 
 	return nil
 }
+
+func RequestProgramList(client Client) ([]string, error) {
+
+	var req protocol.Request
+	req.Cmd = "list"
+
+	if err := client.Enc.Encode(req); err != nil {
+		return nil, fmt.Errorf("failed to send list request: %w", err)
+	}
+
+	var resp protocol.Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return nil, fmt.Errorf("failed to receive list response: %w", err)
+	}
+
+	if !resp.Ok {
+		return nil, fmt.Errorf("list command failed: %s", resp.Msg)
+	}
+
+	programs := strings.Split(resp.Msg, "\n")
+
+	return programs, nil
+
+}
