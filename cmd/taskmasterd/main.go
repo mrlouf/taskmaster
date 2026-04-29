@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
@@ -40,10 +39,11 @@ func waitForSignals(s *supervisor.Supervisor) {
 }
 
 func run() error {
-	var pid string
-	pid = strconv.Itoa(os.Getpid())
-	_ = os.Remove("/tmp/taskmasterd.pid")                   //remove if already exists
-	os.WriteFile("/tmp/taskmasterd.pid", []byte(pid), 0666) //permissions?
+	var pid int
+	pid = os.Getpid()
+	//moved to keep pid value in the server struct
+	//_ = os.Remove("/tmp/taskmasterd.pid")                   //remove if already exists
+	//os.WriteFile("/tmp/taskmasterd.pid", []byte(strconv.Itoa(pid)), 0666) //permissions?
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -58,7 +58,7 @@ func run() error {
 
 	supervisor := supervisor.New(cfg, logger)
 
-	server, err := server.New(cfg, logger, supervisor)
+	server, err := server.New(cfg, logger, supervisor, pid)
 	if err != nil {
 		return fmt.Errorf("failed to initialise server: %w", err)
 	}
