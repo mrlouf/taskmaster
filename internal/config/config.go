@@ -65,8 +65,6 @@ func setDefaults(config *Config) {
 
 	for name, program := range config.Programs {
 
-		fmt.Println(name)
-
 		if program.NumProcs == 0 {
 			program.NumProcs = 1
 		}
@@ -84,6 +82,9 @@ func setDefaults(config *Config) {
 		}
 		if program.StopSignal == "" {
 			program.StopSignal = "TERM"
+		}
+		if program.StartTime == 0 {
+			program.StartTime = 1
 		}
 		if program.StopTime == 0 {
 			program.StopTime = 10
@@ -117,6 +118,9 @@ func getNodeConfig(file *os.File) (Config, error) {
 	}
 
 	setDefaults(&cfg)
+
+	// * DEBUG
+	fmt.Printf("\ncfg: %v\n\n", cfg)
 
 	return cfg, nil
 }

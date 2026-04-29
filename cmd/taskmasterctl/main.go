@@ -185,6 +185,22 @@ func connectToSocket() (server.Client, error) {
 	return c, nil
 }
 
+func setReadlineAutocomplete(rl *readline.Instance) {
+
+	rl.Config.AutoComplete = readline.NewPrefixCompleter(
+		readline.PcItem("start"),
+		readline.PcItem("stop"),
+		readline.PcItem("restart"),
+		readline.PcItem("status"),
+		readline.PcItem("reload"),
+		readline.PcItem("shutdown"),
+		readline.PcItem("healthcheck"),
+		readline.PcItem("help"),
+		readline.PcItem("exit"),
+	)
+
+}
+
 func run() error {
 
 	/* 	// ? Necessary? Readline handles SIGINT and EOF internally
@@ -206,6 +222,8 @@ func run() error {
 		return fmt.Errorf("failed to initialise readline: %w", err)
 	}
 	defer rl.Close()
+
+	setReadlineAutocomplete(rl)
 
 	for {
 		line, err := rl.Readline()
