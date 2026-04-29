@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
@@ -39,6 +40,10 @@ func waitForSignals(s *supervisor.Supervisor) {
 }
 
 func run() error {
+	var pid string
+	pid = strconv.Itoa(os.Getpid())
+	_ = os.Remove("/tmp/taskmasterd.pid")                   //remove if already exists
+	os.WriteFile("/tmp/taskmasterd.pid", []byte(pid), 0666) //permissions?
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
