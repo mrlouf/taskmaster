@@ -83,9 +83,6 @@ func setDefaults(config *Config) {
 		if program.StopSignal == "" {
 			program.StopSignal = "TERM"
 		}
-		if program.StartTime == 0 {
-			program.StartTime = 1
-		}
 		if program.StopTime == 0 {
 			program.StopTime = 10
 		}

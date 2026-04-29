@@ -259,7 +259,7 @@ func (s *Supervisor) startProcess(name string) error {
 		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, process.pid)
 	}
 
-	cmd := exec.Command("/bin/sh", "-c", cfg.Command)
+	cmd := exec.Command(cfg.Command)
 
 	env := os.Environ()
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
