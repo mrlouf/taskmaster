@@ -86,11 +86,13 @@ func (s *Supervisor) Reload() {
 			s.stopProcess(name)
 		}
 		ToDel = nil
-		// if s.existingProcess(s.Config, process, procName) == true {
-
-		// } else {//demarre le process si autostart
-
-		// }
+	}
+	for name, program := range s.Config.Programs {
+		if program.AutoStart {
+			if err := s.startProcess(name); err != nil {
+				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload'%s': %v", name, err))
+			}
+		}
 	}
 }
 
