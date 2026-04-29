@@ -95,15 +95,94 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-/*func ReloadConfig(curcfg *Config) (*Config, *Config, error) {
-	var oldcfg Config
-	var newcfg Config
+func (c *Config) existingProgram(name string) bool {
+	if _, ok := c.Programs[name]; ok {
+		return true
+	}
+	return false
+}
 
-	newcfg =
+// func (p *Program) updateProgram(new *Program) {
+// 	p.Command = new.Command
+// 	p.NumProcs = new.NumProcs
+// 	p.Umask = new.Umask
+// 	p.WorkingDir = new.WorkingDir
+// 	p.AutoStart = new.AutoStart
+// 	p.AutoRestart = new.AutoRestart
+// 	p.StartRetries = new.StartRetries
+// 	p.StartTime = new.StartTime
+// 	p.StopSignal = new.StopSignal
+// 	p.StopTime = new.StopTime
+// 	p.Stdout = new.Stdout
+// 	p.Stderr = new.Stderr
+// 	p.ExitCodes = make(IntOrSlice)
+// 	for k, v := range new.ExitCodes {
+// 		p.ExitCodes[k] = v
+// 	}
+// 	p.Env := make(map[string]string)
+// 	for k, v := range new.Env {
+// 		p.Env[k] = v
+// 	}
+// }
 
-	oldcfg = *curcfg
-	for name, program := range curcfg.Programs {
+func (c *Config) addProgram(p *Program, name string) {
+	if c.Programs == nil {
+		c.Programs = make(map[string]Program)
+	}
+	newProg := p.copyProgram()
+	c.Programs[name] = *newProg
+}
 
+func (p *Program) copyProgram() *Program {
+	copyprog := &Program{
+		Command:      p.Command,
+		NumProcs:     p.NumProcs,
+		Umask:        p.Umask,
+		WorkingDir:   p.WorkingDir,
+		AutoStart:    p.AutoStart,
+		AutoRestart:  p.AutoRestart,
+		StartRetries: p.StartRetries,
+		StartTime:    p.StartTime,
+		StopSignal:   p.StopSignal,
+		StopTime:     p.StopTime,
+		Stdout:       p.Stdout,
+		Stderr:       p.Stderr,
+	}
+	if p.ExitCodes != nil {
+		copyprog.ExitCodes = make(IntOrSlice, len(p.ExitCodes))
+		for k, v := range p.ExitCodes {
+			copyprog.ExitCodes[k] = v
+		}
+	}
+	if p.Env != nil {
+		copyprog.Env = make(map[string]string, len(p.Env))
+		for k, v := range p.Env {
+			copyprog.Env[k] = v
+		}
+	}
+	return copyprog
+}
+
+func ReloadConfig(Current *Config, path string) (*Config, error) {
+	var Deletion *Config
+
+	NewCfg, err := LoadConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	for name, program := range Current.Programs {
+		if !NewCfg.existingProgram(name) {
+			Deletion.addProgram(&program, name)
+			delete(Current.Programs, name)
+		} else {
+			Current.Programs[name] = NewCfg.Programs[name]
+		}
 	}
 
-}*/
+	for name, program := range NewCfg.Programs {
+		if !Current.existingProgram(name) {
+			Current.addProgram(&program, name)
+		}
+	}
+	return Deletion, nil
+}
