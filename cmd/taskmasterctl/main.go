@@ -185,16 +185,18 @@ func connectToSocket() (server.Client, error) {
 	return c, nil
 }
 
-/* func getProgramNames(programs string) []string {
-	return c.Programs
-} */
+func getProgramNames(s server.Client) func(string) []string {
+	return func(line string) []string {
+		return s.Programs
+	}
+}
 
 func listLocalFiles(path string) func(string) []string {
 	return func(line string) []string {
 		names := make([]string, 0)
 		files, _ := os.ReadDir(path)
 		for _, f := range files {
-			names = append(names, f.Name())
+			names = append(names, strings.TrimRight(f.Name(), "\n"))
 		}
 		return names
 	}
@@ -205,7 +207,9 @@ func setReadlineAutocomplete(rl *readline.Instance, c *server.Client) {
 	// TODO: Implement dynamic autocomplete that updates the list of programs after each command execution
 
 	rl.Config.AutoComplete = readline.NewPrefixCompleter(
-		readline.PcItem("start"),
+		readline.PcItem("start",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
 		readline.PcItem("stop"),
 		readline.PcItem("restart"),
 		readline.PcItem("status"),
