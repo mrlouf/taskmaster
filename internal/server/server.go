@@ -16,9 +16,10 @@ import (
 )
 
 type Client struct {
-	Socket net.Conn
-	Enc    *json.Encoder
-	Dec    *json.Decoder
+	Socket   net.Conn
+	Enc      *json.Encoder
+	Dec      *json.Decoder
+	Programs []string
 }
 
 type Server struct {
