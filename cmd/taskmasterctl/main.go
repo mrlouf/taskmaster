@@ -185,9 +185,16 @@ func connectToSocket() (server.Client, error) {
 	return c, nil
 }
 
-func getProgramNames(s server.Client) func(string) []string {
+func getProgramNames(c server.Client) func(string) []string {
 	return func(line string) []string {
-		return s.Programs
+
+		resp, err := server.RequestProgramList(c)
+		if err != nil {
+			return []string{}
+		}
+
+		fmt.Println(resp)
+		return resp
 	}
 }
 
@@ -210,9 +217,13 @@ func setReadlineAutocomplete(rl *readline.Instance, c *server.Client) {
 		readline.PcItem("start",
 			readline.PcItemDynamic(getProgramNames(*c)),
 		),
-		readline.PcItem("stop"),
+		readline.PcItem("stop",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
 		readline.PcItem("restart"),
-		readline.PcItem("status"),
+		readline.PcItem("status",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
 		readline.PcItem("reload",
 			readline.PcItem("-c",
 				readline.PcItemDynamic(listLocalFiles("./"))),

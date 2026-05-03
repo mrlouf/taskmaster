@@ -177,7 +177,8 @@ func RequestShutdown(c Client) error {
 
 	fmt.Printf("%s\n", resp.Msg)
 	fmt.Printf("Goodbye!\n")
-	os.Exit(0)
+
+	os.Exit(0) // controller exit
 
 	return nil
 }
@@ -197,11 +198,11 @@ func HandleShutdown(client Client, server *Server) error {
 
 	resp = <-event.RespCh
 
-	fmt.Printf("Response from supervisor: %s\n", resp.Msg)
-
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send shutdown response: %w", err)
 	}
+
+	os.Exit(0) // daemon exit
 
 	return nil
 }
@@ -361,7 +362,7 @@ func RequestAllStatus(client Client) error {
 		return fmt.Errorf("status command failed: %s", resp.Msg)
 	}
 
-	fmt.Printf("%s\n", resp.Msg)
+	fmt.Printf("%s", resp.Msg)
 
 	return nil
 }
@@ -385,7 +386,7 @@ func RequestProgramStatus(client Client, name string) error {
 		return fmt.Errorf("status command failed: %s", resp.Msg)
 	}
 
-	fmt.Printf("%s\n", resp.Msg)
+	fmt.Printf("\n%s\n", resp.Msg)
 
 	return nil
 }
@@ -433,6 +434,7 @@ func HandleAllStatus(client Client, server *Server) error {
 	// instead of using the '+' operator which creates multiple intermediate strings and wastes memory
 	var b strings.Builder
 
+	b.WriteString("\n")
 	for _, name := range keys {
 		b.WriteString(server.Supervisor.GetStatus(name))
 		b.WriteString("\n")

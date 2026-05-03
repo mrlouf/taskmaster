@@ -182,6 +182,10 @@ func (s *Supervisor) handleShutdown() {
 						fmt.Printf("[DEBUG] Process '%s' did not exit gracefully, sent KILL signal\n", name)
 						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
 					}
+					process.state = STOPPED
+					process.retries = 0
+					process.done = nil
+					process.pid = 0
 				}
 			})
 		}
@@ -628,7 +632,7 @@ func (s *Supervisor) Start() {
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: true, Msg: "Shut down complete"}
 			}
-			os.Exit(0)
+			// os.Exit(0)
 		}
 	}
 }
