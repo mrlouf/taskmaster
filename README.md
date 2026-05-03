@@ -32,10 +32,10 @@ The supported commands are:
 
 The daemon manages the state of each process and updates it accordingly. The possible states are:
 
-- `STARTING`: The process is starting. This state is entered when the daemon receives a command to start the process or the process has an autostart policy, and will remain in this state until the start time is reached.
+- `STARTING`: The process is starting. This state is entered when the daemon receives a command to start the process or the process has an autostart policy, and will remain in this state until the start time has been reached or the process has successfully started.
 - `RUNNING`: The process is running and healthy. This state is entered when the process has started successfully and has reached the start time specified in the configuration file.
 - `STOPPING`: The process is stopping. This state is entered when the daemon receives a command to stop the process and is waiting the specified stop time for the process to terminate gracefully. If the process does not terminate within the stop time, the daemon will forcefully kill the process and transition it to the `STOPPED` state.
-- `STOPPED`: The process is not running. This is the initial state before the process is started, and also the state after the process has been stopped.
+- `STOPPED`: The process is not running for one of two reasons: either it does not have the autostart policy enabled, or it has been manually terminated by the controller.
 - `EXITED`: The process has exited. This state is entered when the process has terminated, either successfully, with an error or has received a signal. Depending on the exit status and the restart policy, the daemon may attempt to restart the process.
 - `BACKOFF`: The process has failed to start and is waiting before the next retry. This state is entered when the process fails to start, either due to an error or because it exited before reaching the start time. The daemon will wait for a certain backoff time before attempting to restart the process again. If the process continues to fail to start after the maximum number of retries, it will transition to the `FATAL` state.
 - `FATAL`: The process has failed to start after the maximum number of retries has been reached. The process will not be restarted anymore and will remain in this state until a manual intervention or a configuration change.
@@ -58,11 +58,36 @@ An example of a process autostarting and failing to start with two retries would
 STOPPED → STARTING → BACKOFF → STARTING → BACKOFF → FATAL
 ```
 
+## Subprocesses
+
+Under the program unit in the configuration file, the user can specify a certain number of subprocesses to be run by the daemon. For instance, this program:
+
+```yaml
+  nginx:
+    cmd: "/usr/sbin/nginx -c /etc/nginx/nginx.conf"
+    numprocs: 3
+    ...
+```
+
+will run three processes of nginx under the same program.
+
+It is possible to monitor the statuses of each subprocess, however starting and stopping happens at the program level and it is not possible to handle subprocesses manually.
+
+The only exception to that is the retry policy: the system will automatically try to restart an exited program according to its retry policy.
+
+## Retry Policy
+
+The program allows the following retry policy definitions:
+
+- `always`: The program should be restarted regardless of the exit status or reason for termination, until the maximum number of retries is reached.
+- `never`: The program should not be restarted. This overrides any restart conditions and means that the program will only be started once, and if it exits (successfully or with an error), it will not be restarted.
+- `unexpected`: The program should be restarted only if it exits unexpectedly, which means if the exit code does not match the ones specified in the configuration file.
+
 ## Logs
 
 The daemon logs the output of the managed requests from the controller into a log file with a timestamp for clarity.
 
-The make clean target removes the log file.
+The `make clean` target removes the log file.
 
 ### Development tools
 
