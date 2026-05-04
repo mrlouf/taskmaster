@@ -107,17 +107,17 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 
 func (s *Supervisor) handleReload() error {
 	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
+
+		fmt.Printf("[DEBUG] Failed to reload new config file: %v\n", err)
+		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err
+
 	} else if ToDel != nil {
 		for name := range ToDel.Programs {
 			s.stopProgram(name)
 		}
 		ToDel = nil
 	}
-
-	fmt.Println(s.Config)
-
-	fmt.Println(s.Config.Programs)
 
 	for name, program := range s.Config.Programs {
 		if program.AutoStart {
@@ -161,13 +161,6 @@ func (s *Supervisor) handleShutdown() { //events.go
 
 	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
-
-	/* 	// ! Override restart policy to prevent any restarts during shutdown
-	   	for program := range s.Config.Programs {
-	   		cfg := s.Config.Programs[program]
-	   		cfg.AutoRestart = "never"
-	   		s.Config.Programs[program] = cfg
-	   	} */
 
 	var wg sync.WaitGroup
 

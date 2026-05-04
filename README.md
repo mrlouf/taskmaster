@@ -18,13 +18,12 @@ The daemon and the controller are communicating over a Unix socket using a simpl
 
 The supported commands are:
 
-- `start <program>`: Start a program defined in the configuration file
-- `stop <program>`: Stop a running program
-- `restart <program>`: Restart a running program
-- `status <program>`: Get the status of a program (running, stopped, etc.)
+- `start <programs>`: Start a program defined in the configuration file
+- `stop <programs>`: Stop a running program
+- `status <programs>`: Get the status of a program (running, stopped, etc.). If no program is specified, the status of all programs will be returned.
 - `healthcheck`: Check if the daemon is running and responsive
-- `reload`: Reload the configuration file and apply any changes to the managed processes
-- `shutdown`: Stop the daemon gracefully, allowing it to clean up resources and terminate all managed processes before exiting
+- `reload`: Reload the configuration file and apply any changes to the managed programs
+- `shutdown`: Stop the daemon gracefully, allowing it to clean up resources and terminate all managed programs before exiting
 - `exit`: Stop the daemon gracefully
 - `help`: Display a help message with the list of available commands
 
@@ -71,7 +70,7 @@ Under the program unit in the configuration file, the user can specify a certain
 
 will run three processes of nginx under the same program.
 
-It is possible to monitor the statuses of each subprocess, however starting and stopping happens at the program level and it is not possible to handle subprocesses manually.
+It is possible to monitor the status of each subprocess, however starting and stopping happens at program level and it is not possible to micro-manage subprocesses manually.
 
 The only exception to that is the retry policy: the system will automatically try to restart an exited program according to its retry policy.
 

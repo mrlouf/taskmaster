@@ -1,0 +1,19 @@
+# TODO
+
+## Redirections
+
+The taskmaster should be able to redirect the stdout and stderr of the managed processes to log files. This can be achieved by using the `os/exec` package in Go, which allows us to set the `Stdout` and `Stderr` fields of the `Cmd` struct to file handles.
+
+We need to account for file handling: create log files if they don't exist, error management if trying to write to a file that can't be accessed, etc.
+
+## Reload: subtle cases
+
+According to the supervisor documentation, sending `SIGHUP` to the daemon will trigger a blind stop of all programs followed by a reload of the first configuration file found. Autostart programs will be restarted after the reload.
+
+We need to be more considerate in our implementation of the reload command, as the subject requires us to only stop programs that have been modified. This is easily done doing a diff between old and new conf files.
+
+There are some edge cases to consider though:
+
+- Adding more subprocesses to an existing program: we should only start the new subprocesses, not the whole program.
+- Removing subprocesses from an existing program: we should only stop the removed subprocesses, not the whole program.
+- Changing any other parameter of an existing program (command, environment variables, working directory, etc.): we should stop the whole program and start it again with the new configuration.
