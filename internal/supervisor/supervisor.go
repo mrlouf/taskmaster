@@ -108,7 +108,6 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 func (s *Supervisor) handleReload() error {
 	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
 
-		fmt.Printf("[DEBUG] Failed to reload new config file: %v\n", err)
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err
 
@@ -122,7 +121,7 @@ func (s *Supervisor) handleReload() error {
 	for name, program := range s.Config.Programs {
 		if program.AutoStart {
 			if err := s.startProgram(name); err != nil {
-				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload'%s': %v", name, err))
+				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
 			}
 		}
 	}
@@ -159,7 +158,6 @@ func (s *Supervisor) autoStartProcesses() {
 
 func (s *Supervisor) handleShutdown() { //events.go
 
-	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
 
 	var wg sync.WaitGroup
@@ -183,19 +181,17 @@ func (s *Supervisor) handleShutdown() { //events.go
 					cfg := s.Config.Programs[name]
 
 					signal := syscall.SIGTERM
-					fmt.Printf("Sending signal %d to process '%s' with PID %d\n", signal, name, process.pid)
+					s.Logger.Log(fmt.Sprintf("Sending signal %d to process '%s' with PID %d", signal, name, process.pid))
 					process.cmd.Process.Signal(signal)
 
 					select {
 					case process.cmd.Err = <-process.done:
-						fmt.Printf("[DEBUG] Process '%s' has exited gracefully\n", name)
 						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited gracefully", name, process.pid))
 
 					case <-time.After(time.Duration(cfg.StopTime) * time.Second):
 						process.cmd.Process.Kill()
 						process.cmd.Err = <-process.done
 
-						fmt.Printf("[DEBUG] Process '%s' did not exit gracefully, sent KILL signal\n", name)
 						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
 					}
 					process.state = STOPPED
@@ -209,7 +205,6 @@ func (s *Supervisor) handleShutdown() { //events.go
 
 	wg.Wait()
 
-	fmt.Printf("[DEBUG] Supervisor shutdown complete\n")
 	s.Logger.Log("Supervisor shutdown complete")
 
 }
@@ -425,7 +420,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 
 	case "never":
 
-		fmt.Printf("[DEBUG] Process '%s' has terminated.\n", event.Name)
 		s.Logger.Log(fmt.Sprintf("Process '%s' has terminated.", event.Name))
 		process.state = EXITED
 		process.retries = 0
@@ -433,7 +427,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 
 	case "always":
 
-		fmt.Printf("[DEBUG] Process '%s' has terminated. Restart policy is 'always', attempting restart\n", event.Name)
 		s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Restart policy is 'always', attempting restart", event.Name))
 
 		process.state = EXITED
@@ -448,7 +441,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		if expectedExit {
 
 			// Expected exit: mark process as EXITED
-			fmt.Printf("[DEBUG] Process '%s' has terminated with expected exit code %d.\n", event.Name, process.cmd.ProcessState.ExitCode())
 			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated with expected exit code %d.", event.Name, process.cmd.ProcessState.ExitCode()))
 			process.state = EXITED
 			process.retries = 0
@@ -464,7 +456,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 				process.state = EXITED
 			}
 
-			fmt.Printf("[DEBUG] Process '%s' has terminated. Attempting restart (%d/%d)\n", event.Name, process.retries+1, process.Config.StartRetries)
 			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Attempting restart (%d/%d)", event.Name, process.retries+1, process.Config.StartRetries))
 
 			process.retries++
@@ -481,7 +472,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		} else {
 
 			// Unexpected exit and no more retries available: mark process as FATAL
-			fmt.Printf("[DEBUG] Process '%s' has terminated. Restart attempts exhausted (%d/%d), marking as FATAL\n", event.Name, process.retries, process.Config.StartRetries)
 			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Restart attempts exhausted (%d/%d), marking as FATAL", event.Name, process.retries, process.Config.StartRetries))
 			process.state = FATAL
 			process.pid = 0
@@ -550,7 +540,7 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 	process.mu.Unlock()
 
 	signal := getSignalByName(cfg.StopSignal)
-	fmt.Printf("Sending signal %s to process '%s' with PID %d\n", cfg.StopSignal, process.Name, process.pid)
+	s.Logger.Log(fmt.Sprintf("Sending signal %s to process '%s' with PID %d", cfg.StopSignal, process.Name, process.pid))
 	process.cmd.Process.Signal(signal)
 
 	// Wait for the process to exit gracefully,
@@ -571,7 +561,6 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 	process.pid = 0
 	process.mu.Unlock()
 
-	fmt.Printf("[DEBUG] Process '%s' has been STOPPED\n", process.Name)
 	s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", process.Name))
 
 	return nil
@@ -589,12 +578,10 @@ func (s *Supervisor) Start() {
 
 		case EventProcessDied:
 
-			fmt.Printf("[DEBUG] Received process died event for program '%s'\n", event.Name)
 			s.handleDied(event, event.Index)
 
 		case EventProcessReady:
 
-			fmt.Printf("[DEBUG] Received process ready event for program '%s'\n", event.Name)
 			err := s.handleReady(event.Name, event.Index)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to handle ready event for program '%s': %v", event.Name, err))
@@ -602,7 +589,6 @@ func (s *Supervisor) Start() {
 
 		case EventStartProgram:
 
-			fmt.Printf("[DEBUG] Received start event for program '%s'\n", event.Name)
 			err := s.startProgram(event.Name)
 			if event.RespCh != nil {
 				resp := protocol.Response{Ok: err == nil}
@@ -616,7 +602,6 @@ func (s *Supervisor) Start() {
 
 		case EventStopProgram:
 
-			fmt.Printf("[DEBUG] Received stop event for program '%s'\n", event.Name)
 			err := s.stopProgram(event.Name)
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
@@ -624,7 +609,6 @@ func (s *Supervisor) Start() {
 
 		case EventStartProcess:
 
-			fmt.Printf("[DEBUG] Received start event for process '%s' %d\n", event.Name, event.Index)
 			err := s.startProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
@@ -632,7 +616,6 @@ func (s *Supervisor) Start() {
 
 		case EventStopProcess:
 
-			fmt.Printf("[DEBUG] Received stop event for process '%s' %d\n", event.Name, event.Index)
 			err := s.stopProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
@@ -640,7 +623,6 @@ func (s *Supervisor) Start() {
 
 		case EventReloadConfig:
 
-			fmt.Printf("[DEBUG] Received reload event\n")
 			err := s.handleReload()
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
@@ -648,7 +630,6 @@ func (s *Supervisor) Start() {
 
 		case EventShutdown:
 
-			fmt.Printf("[DEBUG] Received shutdown event\n")
 			s.handleShutdown()
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: true, Msg: "Shut down complete"}

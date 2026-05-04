@@ -137,10 +137,9 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 func (c *Config) existingProgram(name string) bool {
-	if _, ok := c.Programs[name]; ok {
-		return true
-	}
-	return false
+	_, exists := c.Programs[name]
+
+	return exists
 }
 
 // func (p *Program) updateProgram(new *Program) {
@@ -172,6 +171,9 @@ func (c *Config) addProgram(p *Program, name string) {
 	}
 	newProg := p.copyProgram()
 	c.Programs[name] = *newProg
+
+	fmt.Printf("[DEBUG] Added program %s to config\n", name)
+	fmt.Printf("[DEBUG] Program details: %+v\n", c.Programs[name])
 }
 
 func (p *Program) copyProgram() *Program {

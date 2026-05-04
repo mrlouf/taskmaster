@@ -526,11 +526,10 @@ func RequestReload(client Client) error {
 
 func HandleReload(client Client, server *Server) error {
 
-	// TODO: Implement reload logic
 	server.Logger.Log("Reloading configuration...")
 	pid := server.Pid
 	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
-		return fmt.Errorf("failed to send SIGHUP signal to %s: %w", pid, err)
+		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
 	}
 	var resp protocol.Response
 	resp.Ok = true

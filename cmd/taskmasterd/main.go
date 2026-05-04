@@ -31,7 +31,6 @@ func handleSigterm(s *supervisor.Supervisor) {
 
 func handleSighup(s *supervisor.Supervisor) {
 	s.Logger.Log("Received SIGHUP signal, reloading...")
-	fmt.Printf("[DEBUG]: processing SIGHUP and reloading config\n")
 
 	event := supervisor.Event{
 		Kind:   supervisor.EventReloadConfig,

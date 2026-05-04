@@ -17,3 +17,7 @@ There are some edge cases to consider though:
 - Adding more subprocesses to an existing program: we should only start the new subprocesses, not the whole program.
 - Removing subprocesses from an existing program: we should only stop the removed subprocesses, not the whole program.
 - Changing any other parameter of an existing program (command, environment variables, working directory, etc.): we should stop the whole program and start it again with the new configuration.
+
+## Restart
+
+I was going to trash the restart command, but the subject actually seems to require it, so I guess we'll have to implement it. It should be straightforward: kill the program and start it again with the same configuration. We can reuse the existing stop and start functions for this so I don't expect much more code to be added here.
