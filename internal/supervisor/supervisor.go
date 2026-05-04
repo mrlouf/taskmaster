@@ -103,7 +103,25 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 		Events:    make(chan Event, 100), // ! 100 is arbitrary
 		Ready:     make(chan bool, 1),
 	}
+}
 
+func (s *Supervisor) handleReload() error {
+	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
+		return err
+	} else if ToDel != nil {
+		for name := range ToDel.Programs {
+			s.stopProcess(name)
+		}
+		ToDel = nil
+	}
+	for name, program := range s.Config.Programs {
+		if program.AutoStart {
+			if err := s.startProcess(name); err != nil {
+				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload'%s': %v", name, err))
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Supervisor) autoStartProcesses() {
@@ -134,7 +152,7 @@ func (s *Supervisor) autoStartProcesses() {
 	}
 }
 
-func (s *Supervisor) handleShutdown() {
+func (s *Supervisor) handleShutdown() { //events.go
 
 	fmt.Printf("[DEBUG] Received shutdown event, stopping supervisor...\n")
 	s.Logger.Log("Shutting down supervisor...")
@@ -564,8 +582,8 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 
 func (s *Supervisor) Start() {
 
+	fmt.Printf("Starting processes from config file located in '%s'\n", s.Config.ConfigPath)
 	s.autoStartProcesses()
-
 	s.Ready <- true
 
 	for event := range s.Events {
@@ -623,8 +641,11 @@ func (s *Supervisor) Start() {
 			}
 
 		case EventReloadConfig:
-			fmt.Printf("[DEBUG] Received reload config event\n")
-			s.handleReload()
+			fmt.Printf("[DEBUG] Received reload event\n")
+			err := s.handleReload()
+			if event.RespCh != nil {
+				event.RespCh <- protocol.Response{Ok: err == nil}
+			}
 
 		case EventShutdown:
 

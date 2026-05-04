@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -27,9 +28,10 @@ type Server struct {
 	Logger     *logger.Logger
 	Supervisor *supervisor.Supervisor
 	Socket     net.Listener
+	Pid        int
 }
 
-func New(config *config.Config, logger *logger.Logger, supervisor *supervisor.Supervisor) (*Server, error) {
+func New(config *config.Config, logger *logger.Logger, supervisor *supervisor.Supervisor, pid int) (*Server, error) {
 
 	socket, err := OpenSocket()
 	if err != nil {
@@ -41,6 +43,7 @@ func New(config *config.Config, logger *logger.Logger, supervisor *supervisor.Su
 		Logger:     logger,
 		Socket:     socket,
 		Supervisor: supervisor,
+		Pid:        pid,
 	}, nil
 }
 
@@ -525,7 +528,10 @@ func HandleReload(client Client, server *Server) error {
 
 	// TODO: Implement reload logic
 	server.Logger.Log("Reloading configuration...")
-
+	pid := server.Pid
+	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
+		return fmt.Errorf("failed to send SIGHUP signal to %s: %w", pid, err)
+	}
 	var resp protocol.Response
 	resp.Ok = true
 	resp.Msg = "Configuration reloaded successfully"

@@ -1,7 +1,6 @@
 package config
 
 import (
-	// "errors"
 	"flag"
 	"fmt"
 	"io"
@@ -47,7 +46,8 @@ type Program struct {
 }
 
 type Config struct {
-	Programs map[string]Program `yaml:"programs"`
+	Programs   map[string]Program `yaml:"programs"`
+	ConfigPath string
 }
 
 func getConfFilePath() string {
@@ -102,10 +102,6 @@ func setDefaults(config *Config) {
 func getNodeConfig(file *os.File) (Config, error) {
 	var cfg Config
 
-	// loader, err := yaml.NewLoader(file)
-	// if err != nil {
-	// 	return config, err
-	// }
 	loader, err := io.ReadAll(file)
 	if err != nil {
 		return cfg, err
@@ -119,9 +115,11 @@ func getNodeConfig(file *os.File) (Config, error) {
 	return cfg, nil
 }
 
-func LoadConfig() (*Config, error) {
+func LoadConfig(path string) (*Config, error) {
 	//open file
-	path := getConfFilePath()
+	if path == "" {
+		path = getConfFilePath()
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("config file '%s': %w", path, err)
@@ -130,6 +128,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while parsing file '%s': %w", path, err)
 	}
+	cfg.ConfigPath = path
 	if err = validate(&cfg); err != nil {
 		// fmt.Printf("err %v", err)
 		return nil, fmt.Errorf("configuration file format error '%s':\n%w", path, err)
@@ -137,70 +136,98 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// func validate(config *Config) error {
-// 	if len(config.Programs) != 1 {
-// 		return errors.New("yaml document root structure error")
-// 	}
-// 	if prog, ok := config.Programs["programs"] ; ok == false{
-// 		return errors.New("missing 'programs' key value")
-// 	}
-// 	for i := 0; i < len(prog); i++ {
+func (c *Config) existingProgram(name string) bool {
+	if _, ok := c.Programs[name]; ok {
+		return true
+	}
+	return false
+}
 
+// func (p *Program) updateProgram(new *Program) {
+// 	p.Command = new.Command
+// 	p.NumProcs = new.NumProcs
+// 	p.Umask = new.Umask
+// 	p.WorkingDir = new.WorkingDir
+// 	p.AutoStart = new.AutoStart
+// 	p.AutoRestart = new.AutoRestart
+// 	p.StartRetries = new.StartRetries
+// 	p.StartTime = new.StartTime
+// 	p.StopSignal = new.StopSignal
+// 	p.StopTime = new.StopTime
+// 	p.Stdout = new.Stdout
+// 	p.Stderr = new.Stderr
+// 	p.ExitCodes = make(IntOrSlice)
+// 	for k, v := range new.ExitCodes {
+// 		p.ExitCodes[k] = v
 // 	}
-
-// 	return nil
-
+// 	p.Env := make(map[string]string)
+// 	for k, v := range new.Env {
+// 		p.Env[k] = v
+// 	}
 // }
 
-// func LoadConfig() (*Config, error) {
+func (c *Config) addProgram(p *Program, name string) {
+	if c.Programs == nil {
+		c.Programs = make(map[string]Program)
+	}
+	newProg := p.copyProgram()
+	c.Programs[name] = *newProg
+}
 
-// 	conf_file := getConfFile()
+func (p *Program) copyProgram() *Program {
+	fmt.Printf("[DEBUG] Copy Program\n")
+	copyprog := &Program{
+		Command:      p.Command,
+		NumProcs:     p.NumProcs,
+		Umask:        p.Umask,
+		WorkingDir:   p.WorkingDir,
+		AutoStart:    p.AutoStart,
+		AutoRestart:  p.AutoRestart,
+		StartRetries: p.StartRetries,
+		StartTime:    p.StartTime,
+		StopSignal:   p.StopSignal,
+		StopTime:     p.StopTime,
+		Stdout:       p.Stdout,
+		Stderr:       p.Stderr,
+	}
+	if p.ExitCodes != nil {
+		copyprog.ExitCodes = make(IntOrSlice, len(p.ExitCodes))
+		copy(copyprog.ExitCodes, p.ExitCodes)
+	}
+	if p.Env != nil {
+		copyprog.Env = make(map[string]string, len(p.Env))
+		for k, v := range p.Env {
+			copyprog.Env[k] = v
+		}
+	}
+	return copyprog
+}
 
-// 	_, err := os.Stat(conf_file)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
-// 	}
-
-// 	file, err := os.ReadFile(conf_file)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
-// 	}
-
-// 	var cfg Config
-// 	err = yaml.Unmarshal(file, &cfg)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
-// 	}
-
-// 	err = cfg.validate()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("config file '%s': %w", conf_file, err)
-// 	}
-
-// 	return &cfg, nil
-
-// }
-
-// func (cfg *Config) validate() error {
-// 	for name, program := range cfg.Programs {
-// 		if program.Command == "" {
-// 			return fmt.Errorf("program '%s' has an empty command", name)
-// 		}
-// 		if program.NumProcs < 1 {
-// 			return fmt.Errorf("program '%s' must have at least 1 process", name)
-// 		}
-// 		if program.Umask < 0 || program.Umask > 0o777 {
-// 			return fmt.Errorf("program '%s' has an invalid umask: %o", name, program.Umask)
-// 		}
-// 		if program.StartRetries < 0 {
-// 			return fmt.Errorf("program '%s' has a negative startretries value", name)
-// 		}
-// 		if program.StartTime < 0 {
-// 			return fmt.Errorf("program '%s' has a negative starttime value", name)
-// 		}
-// 		if program.StopTime < 0 {
-// 			return fmt.Errorf("program '%s' has a negative stoptime value", name)
-// 		}
-// 	}
-// 	return nil
-// }
+func ReloadConfig(Current *Config) (*Config, error) {
+	Deletion := &Config{}
+	fmt.Printf("[DEBUG] Starting reloading new file\n")
+	NewCfg, err := LoadConfig(Current.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("[DEBUG] New config file reloaded\n")
+	for name, program := range Current.Programs {
+		if !NewCfg.existingProgram(name) {
+			fmt.Printf("[DEBUG] Program %s not found in new file, to be deleted\n", name)
+			Deletion.addProgram(&program, name)
+			fmt.Printf("[DEBUG] Added to Deletion\n")
+			delete(Current.Programs, name)
+			fmt.Printf("[DEBUG] Deleted\n")
+		} else {
+			fmt.Printf("[DEBUG] Updating current config\n")
+			Current.Programs[name] = NewCfg.Programs[name]
+		}
+	}
+	for name, program := range NewCfg.Programs {
+		if !Current.existingProgram(name) {
+			fmt.Printf("[DEBUG] Adding new program to config\n")
+			Current.addProgram(&program, name)
+		}
+	}
+	return Deletion, nil
+}

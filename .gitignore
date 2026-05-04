@@ -39,3 +39,4 @@ go.work.sum
 # .idea/
  .vscode/
 .vscode/settings.json
+internal/config/config.go
