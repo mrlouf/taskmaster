@@ -208,6 +208,7 @@ func ReloadConfig(Current *Config) (*Config, error) {
 	fmt.Printf("[DEBUG] Starting reloading new file\n")
 	NewCfg, err := LoadConfig(Current.ConfigPath)
 	if err != nil {
+		fmt.Printf("[DEBUG] Error loading new config: %s\nNo change done to current config\n", err.Error())
 		return nil, err
 	}
 	fmt.Printf("[DEBUG] New config file reloaded\n")

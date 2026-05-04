@@ -110,13 +110,18 @@ func (s *Supervisor) handleReload() error {
 		return err
 	} else if ToDel != nil {
 		for name := range ToDel.Programs {
-			s.stopProcess(name)
+			s.stopProgram(name)
 		}
 		ToDel = nil
 	}
+
+	fmt.Println(s.Config)
+
+	fmt.Println(s.Config.Programs)
+
 	for name, program := range s.Config.Programs {
 		if program.AutoStart {
-			if err := s.startProcess(name); err != nil {
+			if err := s.startProgram(name); err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload'%s': %v", name, err))
 			}
 		}
@@ -641,6 +646,7 @@ func (s *Supervisor) Start() {
 			}
 
 		case EventReloadConfig:
+
 			fmt.Printf("[DEBUG] Received reload event\n")
 			err := s.handleReload()
 			if event.RespCh != nil {
