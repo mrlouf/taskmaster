@@ -622,8 +622,9 @@ func (s *Supervisor) Start() {
 				event.RespCh <- protocol.Response{Ok: err == nil}
 			}
 
-			/* case EventReloadConfig:
-			s.handleReload() */
+		case EventReloadConfig:
+			fmt.Printf("[DEBUG] Received reload config event\n")
+			s.handleReload()
 
 		case EventShutdown:
 
