@@ -127,13 +127,10 @@ func (s *Supervisor) handleReload() error {
 	}
 	return nil
 }
-
-func (s *Supervisor) autoStartProcesses() {
-
+func (s *Supervisor) createProcesses() {
 	// * This could be optimised using a worker pool to gather all programs in parallel
 	// * using goroutines and a WaitGroup, but it could also be risky and probably overkill
 	for name, program := range s.Config.Programs {
-
 		for i := 0; i < program.NumProcs; i++ {
 			process := &Process{
 				Name:    name,
@@ -143,9 +140,12 @@ func (s *Supervisor) autoStartProcesses() {
 				idx:     i,
 			}
 			s.Processes[name] = append(s.Processes[name], process)
-
 		}
+	}
+}
 
+func (s *Supervisor) autoStartProcesses() {
+	for name, program := range s.Config.Programs {
 		if program.AutoStart {
 			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
 			err := s.startProgram(name)
@@ -570,6 +570,7 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 func (s *Supervisor) Start() {
 
 	fmt.Printf("Starting processes from config file located in '%s'\n", s.Config.ConfigPath)
+	s.createProcesses()
 	s.autoStartProcesses()
 	s.Ready <- true
 
