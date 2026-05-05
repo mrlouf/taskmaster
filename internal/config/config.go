@@ -205,20 +205,12 @@ func (p *Program) copyProgram() *Program {
 	return copyprog
 }
 
-// * DEBUG
-var counter int = 0
-
 func ReloadConfig(Current *Config) (*Config, error) {
-
-	// * DEBUG
-	counter++
 
 	Deletion := &Config{}
 	fmt.Printf("[DEBUG] Starting reloading new file\n")
 	NewCfg, err := LoadConfig(Current.ConfigPath)
 	if err != nil {
-		// * DEBUG
-		fmt.Printf("\n%dth reload\n\n", counter)
 		return nil, err
 	}
 	fmt.Printf("[DEBUG] New config file reloaded\n")
@@ -246,8 +238,6 @@ func ReloadConfig(Current *Config) (*Config, error) {
 			Current.addProgram(&program, name)
 		}
 	}
-	// * DEBUG
-	fmt.Printf("\n%dth reload\n\n", counter)
 
 	return Deletion, nil
 }
