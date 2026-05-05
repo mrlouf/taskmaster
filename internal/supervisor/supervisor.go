@@ -625,7 +625,11 @@ func (s *Supervisor) Start() {
 
 			err := s.handleReload()
 			if event.RespCh != nil {
-				event.RespCh <- protocol.Response{Ok: err == nil}
+				if err != nil {
+					event.RespCh <- protocol.Response{Ok: false, Msg: err.Error()}
+				} else {
+					event.RespCh <- protocol.Response{Ok: true, Msg: "Config reloaded successfully"}
+				}
 			}
 
 		case EventShutdown:
