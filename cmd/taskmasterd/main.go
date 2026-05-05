@@ -15,6 +15,7 @@ import (
 )
 
 func handleSigterm(s *supervisor.Supervisor) {
+	// Handle graceful shutdown on SIGINT and SIGTERM
 	s.Logger.Log("Received shutdown signal, exiting...")
 	event := supervisor.Event{
 		Kind:   supervisor.EventShutdown,
@@ -30,6 +31,7 @@ func handleSigterm(s *supervisor.Supervisor) {
 }
 
 func handleSighup(s *supervisor.Supervisor) {
+	//To manage SIGHUP signals which leads to a reload command
 	s.Logger.Log("Received SIGHUP signal, reloading...")
 
 	event := supervisor.Event{
@@ -44,8 +46,9 @@ func handleSighup(s *supervisor.Supervisor) {
 }
 
 func waitForSignals(s *supervisor.Supervisor) {
+	//Management of SIGTERM, SIGINT and SIGHUP signals. SIGTERM and SIGINT trigger graceful shutdown
+	// while SIGHUP triggers a config reload
 
-	// Handle graceful shutdown on SIGINT and SIGTERM
 	for {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
