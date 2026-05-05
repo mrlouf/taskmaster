@@ -8,8 +8,8 @@ CONTROLLER := taskmasterctl
 CONTROLLER_DIR := ./cmd/taskmasterctl
 
 all: $(DAEMON) $(CONTROLLER)
-	go build -o $(DAEMON) $(DAEMON_DIR)
-	go build -o $(CONTROLLER) $(CONTROLLER_DIR)
+	go build -race -o $(DAEMON) $(DAEMON_DIR)
+	go build -race -o $(CONTROLLER) $(CONTROLLER_DIR)
 
 $(DAEMON): $(DAEMON_DIR)/*.go
 	go build -o $@ $(DAEMON_DIR)

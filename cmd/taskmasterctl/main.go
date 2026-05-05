@@ -185,6 +185,57 @@ func connectToSocket() (server.Client, error) {
 	return c, nil
 }
 
+func getProgramNames(c server.Client) func(string) []string {
+	return func(line string) []string {
+
+		resp, err := server.RequestProgramList(c)
+		if err != nil {
+			return []string{}
+		}
+
+		fmt.Println(resp)
+		return resp
+	}
+}
+
+func listLocalFiles(path string) func(string) []string {
+	return func(line string) []string {
+		names := make([]string, 0)
+		files, _ := os.ReadDir(path)
+		for _, f := range files {
+			names = append(names, strings.TrimRight(f.Name(), "\n"))
+		}
+		return names
+	}
+}
+
+func setReadlineAutocomplete(rl *readline.Instance, c *server.Client) {
+
+	// TODO: Implement dynamic autocomplete that updates the list of programs after each command execution
+
+	rl.Config.AutoComplete = readline.NewPrefixCompleter(
+		readline.PcItem("start",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
+		readline.PcItem("stop",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
+		readline.PcItem("restart"),
+		readline.PcItem("status",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
+		readline.PcItem("reload",
+			readline.PcItem("-c",
+				readline.PcItemDynamic(listLocalFiles("./"))),
+		),
+		readline.PcItem("shutdown"),
+		readline.PcItem("healthcheck"),
+		readline.PcItem("help"),
+		readline.PcItem("exit"),
+	)
+
+}
+
 func run() error {
 
 	/* 	// ? Necessary? Readline handles SIGINT and EOF internally
@@ -201,11 +252,18 @@ func run() error {
 		return fmt.Errorf("cannot connect to socket: %w\nIs the daemon running?", err)
 	}
 
+	client.Programs, err = server.RequestProgramList(client)
+	if err != nil {
+		return fmt.Errorf("failed to get program list: %w", err)
+	}
+
 	rl, err := readline.New("taskmasterctl> ")
 	if err != nil {
 		return fmt.Errorf("failed to initialise readline: %w", err)
 	}
 	defer rl.Close()
+
+	setReadlineAutocomplete(rl, &client)
 
 	for {
 		line, err := rl.Readline()

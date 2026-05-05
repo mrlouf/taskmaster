@@ -1,6 +1,7 @@
 1. Why importing "github.com/mrlouf/taskmaster/internal/config" and not the module from internal folder directly?
-   2.Logger is not started immediately
-2. Why umask as an integer?
+2. Logger is not started immediately
+3. Why umask as an integer?
+4. Should Programs names be unique in the conf file?
 
 Standard packages: https://pkg.go.dev/std
 

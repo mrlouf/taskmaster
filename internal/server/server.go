@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -16,9 +17,10 @@ import (
 )
 
 type Client struct {
-	Socket net.Conn
-	Enc    *json.Encoder
-	Dec    *json.Decoder
+	Socket   net.Conn
+	Enc      *json.Encoder
+	Dec      *json.Decoder
+	Programs []string
 }
 
 type Server struct {
@@ -26,9 +28,10 @@ type Server struct {
 	Logger     *logger.Logger
 	Supervisor *supervisor.Supervisor
 	Socket     net.Listener
+	Pid        int
 }
 
-func New(config *config.Config, logger *logger.Logger, supervisor *supervisor.Supervisor) (*Server, error) {
+func New(config *config.Config, logger *logger.Logger, supervisor *supervisor.Supervisor, pid int) (*Server, error) {
 
 	socket, err := OpenSocket()
 	if err != nil {
@@ -40,6 +43,7 @@ func New(config *config.Config, logger *logger.Logger, supervisor *supervisor.Su
 		Logger:     logger,
 		Socket:     socket,
 		Supervisor: supervisor,
+		Pid:        pid,
 	}, nil
 }
 
@@ -143,6 +147,10 @@ func handleRequest(client Client, req protocol.Request, server *Server) error {
 
 		err = HandleHealthCheck(client, server)
 
+	case "list":
+
+		err = HandleProgramList(client, server)
+
 	default:
 		return fmt.Errorf("unknown command: %s", req.Cmd)
 	}
@@ -172,7 +180,8 @@ func RequestShutdown(c Client) error {
 
 	fmt.Printf("%s\n", resp.Msg)
 	fmt.Printf("Goodbye!\n")
-	os.Exit(0)
+
+	os.Exit(0) // controller exit
 
 	return nil
 }
@@ -192,11 +201,11 @@ func HandleShutdown(client Client, server *Server) error {
 
 	resp = <-event.RespCh
 
-	fmt.Printf("Response from supervisor: %s\n", resp.Msg)
-
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send shutdown response: %w", err)
 	}
+
+	os.Exit(0) // daemon exit
 
 	return nil
 }
@@ -217,10 +226,15 @@ func RequestStart(client Client, name string) error {
 	}
 
 	if !resp.Ok {
+		if strings.Contains(resp.Msg, "RUNNING") {
+			return fmt.Errorf("program '%s' is already running", name)
+		} else if strings.Contains(resp.Msg, "STARTING") {
+			return fmt.Errorf("program '%s' is already starting", name)
+		}
 		return fmt.Errorf("start command: %s", resp.Msg)
 	}
 
-	fmt.Printf("Successful start: %s\n", resp.Msg)
+	fmt.Printf("Program '%s' started\n", name)
 
 	return nil
 }
@@ -231,14 +245,26 @@ func HandleStart(client Client, name string, server *Server) error {
 
 	program, exists := server.Config.Programs[name]
 	if !exists {
+
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
+
 	} else {
 
 		server.Logger.Log(fmt.Sprintf("Starting program '%s' with command: %s", name, program.Command))
 
 		event := supervisor.Event{
-			Kind:   supervisor.EventStartProcess,
+			Kind:   supervisor.EventStartProgram,
 			Name:   name,
 			RespCh: make(chan protocol.Response),
 		}
@@ -271,10 +297,10 @@ func RequestStop(client Client, name string) error {
 	}
 
 	if !resp.Ok {
-		return fmt.Errorf("stop command failed: %s", resp.Msg)
+		return fmt.Errorf("stop command: %s", resp.Msg)
 	}
 
-	fmt.Printf("Successful stop: %s\n", resp.Msg)
+	fmt.Printf("Program '%s' stopped\n", name)
 
 	return nil
 }
@@ -285,21 +311,32 @@ func HandleStop(client Client, name string, server *Server) error {
 
 	program, exists := server.Config.Programs[name]
 	if !exists {
+
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "STOPPING") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already stopping", name)
+
+	} else if strings.Contains(server.Supervisor.GetStatus(name), "STOPPED") {
+
+		resp.Ok = false
+		resp.Msg = fmt.Sprintf("Program '%s' is already stopped", name)
+
 	} else {
 
 		server.Logger.Log(fmt.Sprintf("Stopping program '%s' with command: %s", name, program.Command))
 		event := supervisor.Event{
-			Kind:   supervisor.EventStopProcess,
+			Kind:   supervisor.EventStopProgram,
 			Name:   name,
 			RespCh: make(chan protocol.Response),
 		}
+
 		server.Supervisor.Events <- event
 		resp = <-event.RespCh
 
-		resp.Ok = true
-		resp.Msg = fmt.Sprintf("Program '%s' stopped successfully", name)
 	}
 
 	if err := client.Enc.Encode(resp); err != nil {
@@ -328,7 +365,7 @@ func RequestAllStatus(client Client) error {
 		return fmt.Errorf("status command failed: %s", resp.Msg)
 	}
 
-	fmt.Printf("%s\n", resp.Msg)
+	fmt.Printf("%s", resp.Msg)
 
 	return nil
 }
@@ -352,7 +389,7 @@ func RequestProgramStatus(client Client, name string) error {
 		return fmt.Errorf("status command failed: %s", resp.Msg)
 	}
 
-	fmt.Printf("%s\n", resp.Msg)
+	fmt.Printf("\n%s\n", resp.Msg)
 
 	return nil
 }
@@ -400,6 +437,7 @@ func HandleAllStatus(client Client, server *Server) error {
 	// instead of using the '+' operator which creates multiple intermediate strings and wastes memory
 	var b strings.Builder
 
+	b.WriteString("\n")
 	for _, name := range keys {
 		b.WriteString(server.Supervisor.GetStatus(name))
 		b.WriteString("\n")
@@ -488,9 +526,11 @@ func RequestReload(client Client) error {
 
 func HandleReload(client Client, server *Server) error {
 
-	// TODO: Implement reload logic
 	server.Logger.Log("Reloading configuration...")
-
+	pid := server.Pid
+	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
+		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
+	}
 	var resp protocol.Response
 	resp.Ok = true
 	resp.Msg = "Configuration reloaded successfully"
@@ -533,6 +573,49 @@ func HandleHealthCheck(client Client, server *Server) error {
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send healthcheck response: %w", err)
+	}
+
+	return nil
+}
+
+func RequestProgramList(client Client) ([]string, error) {
+
+	var req protocol.Request
+	req.Cmd = "list"
+
+	if err := client.Enc.Encode(req); err != nil {
+		return nil, fmt.Errorf("failed to send list request: %w", err)
+	}
+
+	var resp protocol.Response
+	if err := client.Dec.Decode(&resp); err != nil {
+		return nil, fmt.Errorf("failed to receive list response: %w", err)
+	}
+
+	if !resp.Ok {
+		return nil, fmt.Errorf("list command failed: %s", resp.Msg)
+	}
+
+	programs := strings.Split(resp.Msg, "\n")
+
+	return programs, nil
+
+}
+
+func HandleProgramList(client Client, server *Server) error {
+
+	var resp protocol.Response
+
+	var programNames []string
+	for name := range server.Config.Programs {
+		programNames = append(programNames, name)
+	}
+
+	resp.Ok = true
+	resp.Msg = strings.Join(programNames, "\n")
+
+	if err := client.Enc.Encode(resp); err != nil {
+		return fmt.Errorf("failed to send list response: %w", err)
 	}
 
 	return nil
