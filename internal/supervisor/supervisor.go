@@ -119,7 +119,28 @@ func (s *Supervisor) handleReload() error {
 		ToDel = nil
 	}
 
+	fmt.Println(s.Config.Programs)
+
+	// ! Adding the programs in the new config is not enough,
+	// ! we also need to create the corresponding processes!
 	for name, program := range s.Config.Programs {
+
+		// ! And add only processes to new programs,
+		// ! otherwise we would add additional processes to existing programs
+		if _, exists := s.Processes[name]; exists == false {
+			for i := 0; i < program.NumProcs; i++ {
+				process := &Process{
+					Name:    name,
+					Config:  &program,
+					state:   STOPPED,
+					retries: 0,
+					idx:     i,
+				}
+				s.Processes[name] = append(s.Processes[name], process)
+
+			}
+		}
+
 		if program.AutoStart {
 			if err := s.startProgram(name); err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
@@ -300,6 +321,9 @@ func (s *Supervisor) startProgram(name string) error {
 
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
+
+	fmt.Println(s.Processes[name]) // is null after reload - should not be
+
 	if !exists {
 		return fmt.Errorf("program '%s' not found in taskmasterd\n", name)
 	}

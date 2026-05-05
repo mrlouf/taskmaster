@@ -29,7 +29,7 @@ func handleSigterm(s *supervisor.Supervisor) {
 	os.Exit(0)
 }
 
-/* func handleSighup(s *supervisor.Supervisor) {
+func handleSighup(s *supervisor.Supervisor) {
 	s.Logger.Log("Received SIGHUP signal, reloading...")
 
 	event := supervisor.Event{
@@ -41,7 +41,7 @@ func handleSigterm(s *supervisor.Supervisor) {
 	if !resp.Ok {
 		s.Logger.Log(fmt.Sprintf("Failed to reload supervisor gracefully: %s", resp.Msg))
 	}
-} */
+}
 
 func waitForSignals(s *supervisor.Supervisor) {
 
@@ -54,7 +54,7 @@ func waitForSignals(s *supervisor.Supervisor) {
 		case os.Interrupt, syscall.SIGTERM:
 			handleSigterm(s)
 		case syscall.SIGHUP:
-			/* handleSighup(s) */
+			handleSighup(s)
 		}
 	}
 }
