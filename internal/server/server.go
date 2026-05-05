@@ -8,7 +8,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -536,10 +535,10 @@ func HandleReload(client Client, server *Server) error {
 
 	server.Supervisor.Events <- event
 
-	pid := server.Pid
-	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
-		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
-	}
+	/* 	pid := server.Pid
+	   	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
+	   		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
+	   	} */
 	var resp protocol.Response
 	resp = <-event.RespCh
 

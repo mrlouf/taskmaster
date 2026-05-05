@@ -106,6 +106,7 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 }
 
 func (s *Supervisor) handleReload() error {
+
 	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
 
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
