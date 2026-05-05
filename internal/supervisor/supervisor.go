@@ -119,8 +119,6 @@ func (s *Supervisor) handleReload() error {
 		ToDel = nil
 	}
 
-	fmt.Println(s.Config.Programs)
-
 	// ! Adding the programs in the new config is not enough,
 	// ! we also need to create the corresponding processes!
 	for name, program := range s.Config.Programs {
