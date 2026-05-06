@@ -217,17 +217,23 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 		return nil, err
 	}
 	fmt.Printf("[DEBUG] New config file reloaded\n")
+
+	toBeDeleted := make(map[string]Program)
+
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
 			fmt.Printf("[DEBUG] Program %s not found in new file, to be deleted\n", name)
 			Deletion.addProgram(&program, name)
 			fmt.Printf("[DEBUG] Added to Deletion\n")
-			delete(Current.Programs, name)
-			fmt.Printf("[DEBUG] Deleted\n")
+			toBeDeleted[name] = program
 		} else {
-			fmt.Printf("[DEBUG] Updating current config\n")
+			fmt.Printf("[DEBUG] Updating current config to add %s\n", name)
 			Current.Programs[name] = NewCfg.Programs[name]
 		}
+	}
+	for name := range toBeDeleted {
+		delete(Current.Programs, name)
+		fmt.Printf("[DEBUG] Deleted\n")
 	}
 	for name, program := range NewCfg.Programs {
 		if !Current.existingProgram(name) {
