@@ -207,8 +207,6 @@ func (p *Program) copyProgram() *Program {
 
 func ReloadConfig(Current *Config, path string) (*Config, error) {
 	Deletion := &Config{}
-	fmt.Printf("[DEBUG] Starting reloading new file\n")
-	fmt.Print(path)
 	if path == "" {
 		path = Current.ConfigPath
 	}

@@ -504,6 +504,7 @@ func RequestReload(client Client, path string) error {
 
 	var req protocol.Request
 	req.Cmd = "reload"
+	req.Name = path
 
 	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send reload request: %w", err)
@@ -527,12 +528,11 @@ func HandleReload(client Client, path string, server *Server) error {
 
 	server.Logger.Log("Reloading configuration...")
 
-	// Send SIGHUP signal to the daemon process to trigger config reload
-
-	var event supervisor.Event
-	event.Kind = supervisor.EventReloadConfig
-	event.RespCh = make(chan protocol.Response)
-
+	event := supervisor.Event{
+		Kind:   supervisor.EventReloadConfig,
+		Name:   path,
+		RespCh: make(chan protocol.Response),
+	}
 	server.Supervisor.Events <- event
 
 	/* 	pid := server.Pid

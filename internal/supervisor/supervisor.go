@@ -33,7 +33,7 @@ const (
 
 type Event struct {
 	Kind   EventKind
-	Name   string                 // nom du programme
+	Name   string                 // nom du programme ou  reload config file
 	Index  int                    // numéro d'instance si numprocs > 1
 	Err    error                  // pour EventProcessDied
 	RespCh chan protocol.Response // pour les commandes qui attendent une réponse
@@ -721,7 +721,6 @@ func (s *Supervisor) Start() {
 			}
 
 		case EventReloadConfig:
-
 			err := s.handleReload(event.Name)
 			if event.RespCh != nil {
 				if err != nil {
