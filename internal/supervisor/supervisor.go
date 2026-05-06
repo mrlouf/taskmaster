@@ -89,6 +89,7 @@ type Process struct {
 type Supervisor struct {
 	Config    *config.Config
 	Logger    *logger.Logger
+	bigmu     sync.Mutex
 	Processes map[string][]*Process
 	Events    chan Event
 	Ready     chan bool
@@ -117,7 +118,6 @@ func (s *Supervisor) handleReload() error {
 		}
 		ToDel = nil
 	}
-
 	for name, program := range s.Config.Programs {
 		if program.AutoStart {
 			if err := s.startProgram(name); err != nil {
@@ -127,20 +127,97 @@ func (s *Supervisor) handleReload() error {
 	}
 	return nil
 }
-func (s *Supervisor) createProcesses() {
-	// * This could be optimised using a worker pool to gather all programs in parallel
-	// * using goroutines and a WaitGroup, but it could also be risky and probably overkill
-	for name, program := range s.Config.Programs {
-		for i := 0; i < program.NumProcs; i++ {
-			process := &Process{
-				Name:    name,
-				Config:  &program,
-				state:   STOPPED,
-				retries: 0,
-				idx:     i,
-			}
-			s.Processes[name] = append(s.Processes[name], process)
+
+func (s *Supervisor) sizedownProcesses(name string, n int) {
+
+	//there is an index in the processes!!!
+
+	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
+	s.bigmu.Lock()
+	defer s.bigmu.Unlock()
+	processes := s.Processes[name]
+	if len(processes) == 0 {
+		return
+	}
+	//deadlocks with 2 imbricated locks?
+	x := len(processes)
+	for i := x - 1; i >= 0 && n > 0; i-- {
+		//processes[i].mu.Lock()
+		isActive := processes[i].state == RUNNING || processes[i].state == STARTING
+		//first removing any process not running or in starting condition
+		if isActive == false {
+			//switching last value of the slice with the process to remove from the slice
+			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
+			//removing the last element
+			s.Processes[name] = processes[:len(processes)-1]
+			n--
 		}
+		//processes[i].mu.Unlock()
+	}
+	processes = s.Processes[name]
+	if len(processes) == 0 {
+		return
+	}
+	//if n > 0 we need to stop some other processes, the running ones starting from the last
+	if n > 0 {
+		x := len(processes)
+		for i := x - 1; i >= 0 && n > 0; i-- {
+			//switching last value of the slice with the process to remove from the slice
+			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
+			//removing the last element
+			processes = processes[:len(processes)-1]
+			n--
+		}
+	} else {
+		return
+	}
+}
+
+func (s *Supervisor) getMaxIdx(name string) int {
+	max := 0
+	s.bigmu.Lock()
+	defer s.bigmu.Unlock()
+	if s.Processes[name] == nil {
+		return 0
+	}
+	for i := 0; i < len(s.Processes[name]); i++ {
+		if s.Processes[name][i].idx > max {
+			max = s.Processes[name][i].idx
+		}
+	}
+	return max
+}
+
+func (s *Supervisor) createProcesses() {
+
+	for name, program := range s.Config.Programs {
+		NumProcs := program.NumProcs
+		if len(s.Processes[name]) > NumProcs || len(s.Processes[name]) == 0 {
+			x := len(s.Processes[name])
+			for i := x; i < NumProcs; i++ {
+				process := &Process{
+					Name:    name,
+					Config:  &program,
+					state:   STOPPED,
+					retries: 0,
+					idx:     s.getMaxIdx(name) + 1,
+				}
+				s.Processes[name] = append(s.Processes[name], process)
+			}
+		} else if len(s.Processes[name]) > NumProcs {
+			s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
+
+		}
+		// for i := 0; i < program.NumProcs; i++ {
+		// 	process := &Process{
+		// 		Name:    name,
+		// 		Config:  &program,
+		// 		state:   STOPPED,
+		// 		retries: 0,
+		// 		idx:     i,
+		// 	}
+		// 	s.Processes[name] = append(s.Processes[name], process)
+		// }
 	}
 }
 
