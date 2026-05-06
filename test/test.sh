@@ -17,7 +17,7 @@ status sleep
 status
 reload
 stop nginx
-exit
+shutdown
 EOF
 
 # Start the daemon in the background.
@@ -28,6 +28,8 @@ sleep 1
 # Run the test commands through one controller.
 cat test | ../taskmasterctl
 
+# Restart daemon after shutdown.
+../taskmasterd -c ../conf/taskmaster.conf &
 sleep 1
 
 # Run the same test through two controllers at the same time.
@@ -38,4 +40,4 @@ cat test | ../taskmasterctl
 killall taskmasterd
 
 # Clean up
-rm test
+rm test 
