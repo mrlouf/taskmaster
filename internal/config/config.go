@@ -205,10 +205,14 @@ func (p *Program) copyProgram() *Program {
 	return copyprog
 }
 
-func ReloadConfig(Current *Config) (*Config, error) {
+func ReloadConfig(Current *Config, path string) (*Config, error) {
 	Deletion := &Config{}
 	fmt.Printf("[DEBUG] Starting reloading new file\n")
-	NewCfg, err := LoadConfig(Current.ConfigPath)
+	fmt.Print(path)
+	if path == "" {
+		path = Current.ConfigPath
+	}
+	NewCfg, err := LoadConfig(path)
 	if err != nil {
 		return nil, err
 	}
@@ -231,5 +235,6 @@ func ReloadConfig(Current *Config) (*Config, error) {
 			Current.addProgram(&program, name)
 		}
 	}
+	Current.ConfigPath = path
 	return Deletion, nil
 }

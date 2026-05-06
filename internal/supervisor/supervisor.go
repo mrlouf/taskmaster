@@ -106,8 +106,8 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 	}
 }
 
-func (s *Supervisor) handleReload() error {
-	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
+func (s *Supervisor) handleReload(path string) error {
+	if ToDel, err := config.ReloadConfig(s.Config, path); err != nil {
 
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err
@@ -692,7 +692,7 @@ func (s *Supervisor) Start() {
 
 		case EventReloadConfig:
 
-			err := s.handleReload()
+			err := s.handleReload(event.Name)
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
 			}

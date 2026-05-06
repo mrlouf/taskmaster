@@ -137,7 +137,7 @@ func handleRequest(client Client, req protocol.Request, server *Server) error {
 
 	case "reload":
 
-		err = HandleReload(client, server)
+		err = HandleReload(client, req.Name, server)
 
 	case "shutdown":
 
@@ -501,7 +501,7 @@ func HandleRestart(client Client, name string, server *Server) error {
 	return nil
 }
 
-func RequestReload(client Client) error {
+func RequestReload(client Client, path string) error {
 
 	var req protocol.Request
 	req.Cmd = "reload"
@@ -524,7 +524,7 @@ func RequestReload(client Client) error {
 	return nil
 }
 
-func HandleReload(client Client, server *Server) error {
+func HandleReload(client Client, path string, server *Server) error {
 
 	server.Logger.Log("Reloading configuration...")
 	pid := server.Pid
