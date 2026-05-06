@@ -220,6 +220,8 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 
 	toBeDeleted := make(map[string]Program)
 
+	toBeDeleted := make(map[string]Program)
+
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
 			fmt.Printf("[DEBUG] Program %s not found in new file, to be deleted\n", name)

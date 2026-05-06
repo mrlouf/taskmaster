@@ -8,7 +8,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -527,13 +526,21 @@ func RequestReload(client Client, path string) error {
 func HandleReload(client Client, path string, server *Server) error {
 
 	server.Logger.Log("Reloading configuration...")
-	pid := server.Pid
-	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
-		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
-	}
+
+	// Send SIGHUP signal to the daemon process to trigger config reload
+
+	var event supervisor.Event
+	event.Kind = supervisor.EventReloadConfig
+	event.RespCh = make(chan protocol.Response)
+
+	server.Supervisor.Events <- event
+
+	/* 	pid := server.Pid
+	   	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
+	   		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
+	   	} */
 	var resp protocol.Response
-	resp.Ok = true
-	resp.Msg = "Configuration reloaded successfully"
+	resp = <-event.RespCh
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send reload response: %w", err)

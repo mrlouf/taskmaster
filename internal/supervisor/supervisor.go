@@ -395,6 +395,9 @@ func (s *Supervisor) startProgram(name string) error {
 
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
+
+	fmt.Println(s.Processes[name]) // is null after reload - should not be
+
 	if !exists {
 		return fmt.Errorf("program '%s' not found in taskmasterd\n", name)
 	}
@@ -721,7 +724,11 @@ func (s *Supervisor) Start() {
 
 			err := s.handleReload(event.Name)
 			if event.RespCh != nil {
-				event.RespCh <- protocol.Response{Ok: err == nil}
+				if err != nil {
+					event.RespCh <- protocol.Response{Ok: false, Msg: err.Error()}
+				} else {
+					event.RespCh <- protocol.Response{Ok: true, Msg: "Config reloaded successfully"}
+				}
 			}
 
 		case EventShutdown:
