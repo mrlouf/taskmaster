@@ -224,12 +224,12 @@ func (s *Supervisor) GetStatus(name string) string {
 		process.mu.Lock()
 		state := process.state.String()
 		pid := process.pid
-		process.mu.Unlock()
 		if i == process.Config.NumProcs-1 {
 			str.WriteString("  └── ")
 		} else {
 			str.WriteString("  ├── ")
 		}
+		process.mu.Unlock()
 
 		str.WriteString(fmt.Sprintf("process %d %s", i, state))
 		if pid != 0 {
@@ -252,9 +252,11 @@ func (s *Supervisor) GetStatus(name string) string {
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
 
+	cmd := process.cmd
+
 	waitDone := make(chan error, 1)
 	go func() {
-		waitDone <- process.cmd.Wait()
+		waitDone <- cmd.Wait()
 	}()
 
 	select {
@@ -344,13 +346,13 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 		return fmt.Errorf("failed to start process '%s': %w", process.Name, err)
 	}
 
+	process.mu.Lock()
 	process.cmd = cmd
 	process.pid = cmd.Process.Pid
 	process.startedAt = time.Now()
-	process.mu.Lock()
 	process.state = STARTING
-	process.mu.Unlock()
 	process.done = make(chan error, 1)
+	process.mu.Unlock()
 
 	go s.monitorProcess(process, cfg)
 

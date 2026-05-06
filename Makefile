@@ -27,6 +27,9 @@ clean: pkill
 log:
 	rm -f taskmaster.log
 
+test: all
+	cd test && ./test.sh
+
 re: clean all
 
 # First kill any running process of the daemon and controller, then
@@ -45,4 +48,4 @@ pkill:
 	-@pkill -f $(CONTROLLER) &>/dev/null || true
 	rm -f /tmp/taskmaster.sock
 
-.PHONY: all clean re dev pkill
+.PHONY: all clean re dev pkill test log
