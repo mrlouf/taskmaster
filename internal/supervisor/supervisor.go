@@ -130,8 +130,6 @@ func (s *Supervisor) handleReload() error {
 
 func (s *Supervisor) sizedownProcesses(name string, n int) {
 
-	//there is an index in the processes!!!
-
 	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
 	s.bigmu.Lock()
 	defer s.bigmu.Unlock()
@@ -173,19 +171,12 @@ func (s *Supervisor) sizedownProcesses(name string, n int) {
 	}
 }
 
-func (s *Supervisor) getMaxIdx(name string) int {
-	max := 0
+func (s *Supervisor) updateIdx(name string) {
 	s.bigmu.Lock()
 	defer s.bigmu.Unlock()
-	if s.Processes[name] == nil {
-		return 0
-	}
 	for i := 0; i < len(s.Processes[name]); i++ {
-		if s.Processes[name][i].idx > max {
-			max = s.Processes[name][i].idx
-		}
+		s.Processes[name][i].idx = i
 	}
-	return max
 }
 
 func (s *Supervisor) createProcesses() {
@@ -200,13 +191,14 @@ func (s *Supervisor) createProcesses() {
 					Config:  &program,
 					state:   STOPPED,
 					retries: 0,
-					idx:     s.getMaxIdx(name) + 1,
+					//idx:     s.getMaxIdx(name) + 1,
 				}
 				s.Processes[name] = append(s.Processes[name], process)
 			}
+			s.updateIdx(name)
 		} else if len(s.Processes[name]) > NumProcs {
 			s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
-
+			s.updateIdx(name)
 		}
 		// for i := 0; i < program.NumProcs; i++ {
 		// 	process := &Process{
@@ -446,7 +438,6 @@ func (s *Supervisor) handleReady(name string, index int) error {
 	if !exists {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
 	}
-
 	if processes[index].state != STARTING {
 		return fmt.Errorf("process '%s' is not in STARTING state, cannot transition to ready", name)
 	}
