@@ -155,57 +155,55 @@ func (s *Supervisor) handleReload(path string) error {
 	return nil
 }
 
-func (s *Supervisor) sizedownProcesses(name string, n int) {
-
+func (s *Supervisor) sizedownProcesses(name string, n int) int {
+	var deleted int
 	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
-	fmt.Print("CHECK3\n")
 	s.bigmu.Lock()
 	defer s.bigmu.Unlock()
-	processes := s.Processes[name]
-	if len(processes) == 0 {
-		return
+	//processes := s.Processes[name]
+	if len(s.Processes[name]) == 0 {
+		return deleted
 	}
 	//deadlocks with 2 imbricated locks?
-	x := len(processes)
+	x := len(s.Processes[name])
 	for i := x - 1; i >= 0 && n > 0; i-- {
 		//processes[i].mu.Lock()
-		isActive := processes[i].state == RUNNING || processes[i].state == STARTING || processes[i].state == BACKOFF
+		isActive := s.Processes[name][i].state == RUNNING || s.Processes[name][i].state == STARTING || s.Processes[name][i].state == BACKOFF
 		//first removing any process not running or in starting condition
 		if isActive == false {
-			//stopping process
-			fmt.Print("CHECK4\n")
 			//switching last value of the slice with the process to remove from the slice
-			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
+			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
 			//removing the last element
-			s.Processes[name] = processes[:len(processes)-1]
+			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
 			n--
-			fmt.Print("CHECK5\n")
+			deleted++
+			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
+			fmt.Printf("N: %d\n", n)
 		}
 		//processes[i].mu.Unlock()
 	}
-	processes = s.Processes[name]
-	if len(processes) == 0 {
-		return
+	if len(s.Processes[name]) == 0 {
+		return deleted
 	}
 	//if n > 0 we need to stop some other processes, the running ones starting from the last
 	if n > 0 {
-		x := len(processes)
+		x := len(s.Processes[name])
 		for i := x - 1; i >= 0 && n > 0; i-- {
-			//force stopping process
-			fmt.Print("CHECK6\n")
-			if err := s.stopProcess(processes[i], s.Config.Programs[name]); err != nil {
+			//stopping process
+			if err := s.stopProcess(s.Processes[name][i], s.Config.Programs[name]); err != nil {
 				continue
 			}
 			//switching last value of the slice with the process to remove from the slice
-			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
+			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
 			//removing the last element
-			processes = processes[:len(processes)-1]
+			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
 			n--
-			fmt.Print("CHECK7\n")
+			deleted++
+			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
+			fmt.Printf("N: %d\n", n)
 		}
-	} else {
-		return
 	}
+	return deleted
 }
 
 func (s *Supervisor) updateIdx(name string) {
@@ -217,14 +215,11 @@ func (s *Supervisor) updateIdx(name string) {
 }
 
 func (s *Supervisor) createProcesses() {
-
+	var deleted int
+	var added int
 	for name, program := range s.Config.Programs {
-		fmt.Printf("Prog: %s \n", name)
-		fmt.Printf("Procs: %d \n", program.NumProcs)
-		fmt.Printf("Current Procs: %d \n", len(s.Processes[name]))
 		NumProcs := program.NumProcs
 		if len(s.Processes[name]) < NumProcs || len(s.Processes[name]) == 0 {
-			fmt.Print("CHECK1\n")
 			x := len(s.Processes[name])
 			for i := x; i < NumProcs; i++ {
 				process := &Process{
@@ -235,11 +230,11 @@ func (s *Supervisor) createProcesses() {
 					//idx:     s.getMaxIdx(name) + 1,
 				}
 				s.Processes[name] = append(s.Processes[name], process)
+				added++
 			}
 			s.updateIdx(name)
 		} else if len(s.Processes[name]) > NumProcs {
-			fmt.Print("CHECK2\n")
-			s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
+			deleted += s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
 			s.updateIdx(name)
 		}
 		// for i := 0; i < program.NumProcs; i++ {
@@ -253,6 +248,7 @@ func (s *Supervisor) createProcesses() {
 		// 	s.Processes[name] = append(s.Processes[name], process)
 		// }
 	}
+	fmt.Printf("%d processes were added and %d were deleted\n", added, deleted)
 }
 
 func (s *Supervisor) autoStartProcesses() {
@@ -374,12 +370,11 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	// The error from Wait() will be sent to the process.done channel
 	// and the handleDied handler will decide what to do based on process state and retry policy
 	case err := <-waitDone:
-
 		startTimer.Stop()
 		process.done <- err
+		fmt.Print("CHECK1\n")
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 		return
-
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
 		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx}
@@ -387,7 +382,6 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 
 	err := <-waitDone
 	process.done <- err
-
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 
 }
@@ -427,7 +421,6 @@ func (s *Supervisor) startProgram(name string) error {
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
 		}
 	}
-
 	return globalErr
 }
 
@@ -515,7 +508,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		s.Logger.Log(fmt.Sprintf("Received process died event for unknown process '%s'", event.Name))
 		return
 	}
-
+	if index >= len(s.Processes[event.Name]) {
+		//s.Logger.Log(fmt.Sprintf("Received process died event for unknown process '%s'", event.Name))
+		return
+	}
 	process := processes[index]
 
 	process.mu.Lock()
@@ -673,7 +669,6 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 	process.mu.Unlock()
 
 	s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", process.Name))
-
 	return nil
 
 }
@@ -689,7 +684,6 @@ func (s *Supervisor) Start() {
 		switch event.Kind {
 
 		case EventProcessDied:
-
 			s.handleDied(event, event.Index)
 
 		case EventProcessReady:
