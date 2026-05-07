@@ -243,7 +243,10 @@ func HandleStart(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
+	server.Config.Mu.Lock()
 	program, exists := server.Config.Programs[name]
+	server.Config.Mu.Unlock()
+
 	if !exists {
 
 		resp.Ok = false
