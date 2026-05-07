@@ -252,7 +252,9 @@ func (s *Supervisor) GetStatus(name string) string {
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
 
+	process.mu.Lock()
 	cmd := process.cmd
+	process.mu.Unlock()
 
 	waitDone := make(chan error, 1)
 	go func() {
@@ -371,6 +373,9 @@ func (s *Supervisor) handleReady(name string, index int) error {
 	if !exists {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
 	}
+
+	processes[index].mu.Lock()
+	defer processes[index].mu.Unlock()
 
 	if processes[index].state != STARTING {
 		return fmt.Errorf("process '%s' is not in STARTING state, cannot transition to ready", name)

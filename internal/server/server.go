@@ -426,12 +426,17 @@ func HandleAllStatus(client Client, server *Server) error {
 	var resp protocol.Response
 	resp.Ok = true
 
+	server.Config.Mu.Lock()
+	programs := server.Config.Programs
+
 	// ! Iterating over maps in Go does not guarantee order,
 	// ! so we need to sort the program names in a slice first.
-	keys := make([]string, 0, len(server.Config.Programs))
-	for name := range server.Config.Programs {
+	keys := make([]string, 0, len(programs))
+	for name := range programs {
 		keys = append(keys, name)
 	}
+
+	server.Config.Mu.Unlock()
 
 	slices.Sort(keys)
 
