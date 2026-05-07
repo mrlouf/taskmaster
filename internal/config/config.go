@@ -225,7 +225,7 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 			fmt.Printf("[DEBUG] Added to Deletion\n")
 			toBeDeleted[name] = program
 		} else {
-			fmt.Printf("[DEBUG] Updating current config to add %s\n", name)
+			fmt.Printf("[DEBUG] Updating current config of %s\n", name)
 			Current.Programs[name] = NewCfg.Programs[name]
 		}
 	}
