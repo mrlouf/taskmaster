@@ -158,6 +158,7 @@ func (s *Supervisor) handleReload(path string) error {
 func (s *Supervisor) sizedownProcesses(name string, n int) {
 
 	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
+	fmt.Print("CHECK3\n")
 	s.bigmu.Lock()
 	defer s.bigmu.Unlock()
 	processes := s.Processes[name]
@@ -168,14 +169,21 @@ func (s *Supervisor) sizedownProcesses(name string, n int) {
 	x := len(processes)
 	for i := x - 1; i >= 0 && n > 0; i-- {
 		//processes[i].mu.Lock()
-		isActive := processes[i].state == RUNNING || processes[i].state == STARTING
+		isActive := processes[i].state == RUNNING || processes[i].state == STARTING || processes[i].state == BACKOFF
 		//first removing any process not running or in starting condition
 		if isActive == false {
+			//stopping process
+			fmt.Print("CHECK4\n")
+			if err := s.stopProcess(processes[i], s.Config.Programs[name]); err != nil {
+				fmt.Printf("Error while stopping %w", err)
+				continue
+			}
 			//switching last value of the slice with the process to remove from the slice
 			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
 			//removing the last element
 			s.Processes[name] = processes[:len(processes)-1]
 			n--
+			fmt.Print("CHECK5\n")
 		}
 		//processes[i].mu.Unlock()
 	}
@@ -187,11 +195,17 @@ func (s *Supervisor) sizedownProcesses(name string, n int) {
 	if n > 0 {
 		x := len(processes)
 		for i := x - 1; i >= 0 && n > 0; i-- {
+			//force stopping process
+			fmt.Print("CHECK6\n")
+			if err := s.stopProcess(processes[i], s.Config.Programs[name]); err != nil {
+				continue
+			}
 			//switching last value of the slice with the process to remove from the slice
 			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
 			//removing the last element
 			processes = processes[:len(processes)-1]
 			n--
+			fmt.Print("CHECK7\n")
 		}
 	} else {
 		return
@@ -213,7 +227,8 @@ func (s *Supervisor) createProcesses() {
 		fmt.Printf("Procs: %d \n", program.NumProcs)
 		fmt.Printf("Current Procs: %d \n", len(s.Processes[name]))
 		NumProcs := program.NumProcs
-		if len(s.Processes[name]) > NumProcs || len(s.Processes[name]) == 0 {
+		if len(s.Processes[name]) < NumProcs || len(s.Processes[name]) == 0 {
+			fmt.Print("CHECK1\n")
 			x := len(s.Processes[name])
 			for i := x; i < NumProcs; i++ {
 				process := &Process{
@@ -227,6 +242,7 @@ func (s *Supervisor) createProcesses() {
 			}
 			s.updateIdx(name)
 		} else if len(s.Processes[name]) > NumProcs {
+			fmt.Print("CHECK2\n")
 			s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
 			s.updateIdx(name)
 		}
@@ -613,7 +629,7 @@ func (s *Supervisor) stopProgram(name string) error {
 	cfg := s.Config.Programs[name]
 
 	for _, process := range processes {
-		err := s.stopProcess(process, cfg, false)
+		err := s.stopProcess(process, cfg)
 		if err != nil {
 			return err
 		}
@@ -626,18 +642,14 @@ func (s *Supervisor) stopProgram(name string) error {
 // It attempts to gracefully stop the process by sending the signal specified in the config,
 // changes its state to STOPPING and waiting for it to exit.
 // If the process does not exit within the StopTime specified in the config, it SIG-kills it.
-// boolean parameter 'force' initiates the stop process with any status of the current process
-func (s *Supervisor) stopProcess(process *Process, cfg config.Program, force bool) error {
-	if force == true {
-		process.mu.Lock()
-		isActive := process.state == RUNNING || process.state == STARTING || process.state == BACKOFF
-		process.mu.Unlock()
+func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
+	process.mu.Lock()
+	isActive := process.state == RUNNING || process.state == STARTING || process.state == BACKOFF
+	process.mu.Unlock()
 
-		if !isActive {
-			return fmt.Errorf("process '%s' is not RUNNING, STARTING or BACKOFF - cannot stop", process.Name)
-		}
+	if !isActive {
+		return fmt.Errorf("process '%s' is not RUNNING, STARTING or BACKOFF - cannot stop", process.Name)
 	}
-
 	process.mu.Lock()
 	process.state = STOPPING
 	process.mu.Unlock()
@@ -720,7 +732,7 @@ func (s *Supervisor) Start() {
 
 		case EventStopProcess:
 
-			err := s.stopProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name], false)
+			err := s.stopProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
 			}
