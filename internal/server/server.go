@@ -400,7 +400,10 @@ func HandleProgramStatus(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
+	server.Config.Mu.Lock()
 	program, exists := server.Config.Programs[name]
+	server.Config.Mu.Unlock()
+
 	if !exists {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
