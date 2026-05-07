@@ -12,6 +12,7 @@
 /taskmasterd
 /taskmasterctl
 /taskmaster.log
+/test/taskmaster.log
 
 tmp
 .logs
