@@ -174,10 +174,6 @@ func (s *Supervisor) sizedownProcesses(name string, n int) {
 		if isActive == false {
 			//stopping process
 			fmt.Print("CHECK4\n")
-			if err := s.stopProcess(processes[i], s.Config.Programs[name]); err != nil {
-				fmt.Printf("Error while stopping %w", err)
-				continue
-			}
 			//switching last value of the slice with the process to remove from the slice
 			processes[i], processes[len(processes)-1] = processes[len(processes)-1], processes[i]
 			//removing the last element
