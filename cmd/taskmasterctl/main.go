@@ -59,7 +59,6 @@ func parseCommand(line string) (protocol.Request, error) {
 	}
 
 	if req.Cmd == "help" ||
-		req.Cmd == "reload" ||
 		req.Cmd == "shutdown" ||
 		req.Cmd == "healthcheck" ||
 		req.Cmd == "exit" {
@@ -78,9 +77,10 @@ func parseCommand(line string) (protocol.Request, error) {
 	if req.Cmd == "start" ||
 		req.Cmd == "stop" ||
 		req.Cmd == "restart" ||
+		req.Cmd == "reload" ||
 		req.Cmd == "status" {
 
-		if req.Name == "" && req.Cmd != "status" {
+		if req.Name == "" && (req.Cmd != "status" && req.Cmd != "reload") {
 			return protocol.Request{}, fmt.Errorf("Error: command '%s' requires a program name", req.Cmd)
 		} else if len(parts) > 2 {
 
@@ -130,7 +130,7 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 	case "reload":
 
-		return server.RequestReload(client)
+		return server.RequestReload(client, name)
 
 	case "shutdown":
 

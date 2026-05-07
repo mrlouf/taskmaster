@@ -8,7 +8,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/mrlouf/taskmaster/internal/config"
 	"github.com/mrlouf/taskmaster/internal/logger"
@@ -137,7 +136,7 @@ func handleRequest(client Client, req protocol.Request, server *Server) error {
 
 	case "reload":
 
-		err = HandleReload(client, server)
+		err = HandleReload(client, req.Name, server)
 
 	case "shutdown":
 
@@ -514,10 +513,11 @@ func HandleRestart(client Client, name string, server *Server) error {
 	return nil
 }
 
-func RequestReload(client Client) error {
+func RequestReload(client Client, path string) error {
 
 	var req protocol.Request
 	req.Cmd = "reload"
+	req.Name = path
 
 	if err := client.Enc.Encode(req); err != nil {
 		return fmt.Errorf("failed to send reload request: %w", err)
@@ -537,16 +537,23 @@ func RequestReload(client Client) error {
 	return nil
 }
 
-func HandleReload(client Client, server *Server) error {
+func HandleReload(client Client, path string, server *Server) error {
 
 	server.Logger.Log("Reloading configuration...")
-	pid := server.Pid
-	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
-		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
+
+	event := supervisor.Event{
+		Kind:   supervisor.EventReloadConfig,
+		Name:   path,
+		RespCh: make(chan protocol.Response),
 	}
+	server.Supervisor.Events <- event
+
+	/* 	pid := server.Pid
+	   	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
+	   		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
+	   	} */
 	var resp protocol.Response
-	resp.Ok = true
-	resp.Msg = "Configuration reloaded successfully"
+	resp = <-event.RespCh
 
 	if err := client.Enc.Encode(resp); err != nil {
 		return fmt.Errorf("failed to send reload response: %w", err)

@@ -208,27 +208,34 @@ func (p *Program) copyProgram() *Program {
 	return copyprog
 }
 
-func ReloadConfig(Current *Config) (*Config, error) {
+func ReloadConfig(Current *Config, path string) (*Config, error) {
 	Deletion := &Config{}
-	fmt.Printf("[DEBUG] Starting reloading new file\n")
-	NewCfg, err := LoadConfig(Current.ConfigPath)
+	if path == "" {
+		path = Current.ConfigPath
+	}
+	NewCfg, err := LoadConfig(path)
 	if err != nil {
 		return nil, err
 	}
 	fmt.Printf("[DEBUG] New config file reloaded\n")
+
+	toBeDeleted := make(map[string]Program)
+
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
 			fmt.Printf("[DEBUG] Program %s not found in new file, to be deleted\n", name)
 			Deletion.addProgram(&program, name)
 			fmt.Printf("[DEBUG] Added to Deletion\n")
-			delete(Current.Programs, name)
-			fmt.Printf("[DEBUG] Deleted\n")
+			toBeDeleted[name] = program
 		} else {
-			fmt.Printf("[DEBUG] Updating current config\n")
-			Current.Mu.Lock()
+			fmt.Printf("[DEBUG] Updating current config of %s\n", name)
 			Current.Programs[name] = NewCfg.Programs[name]
 			Current.Mu.Unlock()
 		}
+	}
+	for name := range toBeDeleted {
+		delete(Current.Programs, name)
+		fmt.Printf("[DEBUG] Deleted\n")
 	}
 	for name, program := range NewCfg.Programs {
 		if !Current.existingProgram(name) {
@@ -236,5 +243,6 @@ func ReloadConfig(Current *Config) (*Config, error) {
 			Current.addProgram(&program, name)
 		}
 	}
+	Current.ConfigPath = path
 	return Deletion, nil
 }

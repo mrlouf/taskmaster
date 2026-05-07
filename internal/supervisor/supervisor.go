@@ -33,7 +33,7 @@ const (
 
 type Event struct {
 	Kind   EventKind
-	Name   string                 // nom du programme
+	Name   string                 // nom du programme ou  reload config file
 	Index  int                    // numéro d'instance si numprocs > 1
 	Err    error                  // pour EventProcessDied
 	RespCh chan protocol.Response // pour les commandes qui attendent une réponse
@@ -89,6 +89,7 @@ type Process struct {
 type Supervisor struct {
 	Config    *config.Config
 	Logger    *logger.Logger
+	bigmu     sync.Mutex
 	Processes map[string][]*Process
 	Events    chan Event
 	Ready     chan bool
@@ -105,8 +106,8 @@ func New(config *config.Config, logger *logger.Logger) *Supervisor {
 	}
 }
 
-func (s *Supervisor) handleReload() error {
-	if ToDel, err := config.ReloadConfig(s.Config); err != nil {
+func (s *Supervisor) handleReload(path string) error {
+	if ToDel, err := config.ReloadConfig(s.Config, path); err != nil {
 
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err
@@ -117,35 +118,141 @@ func (s *Supervisor) handleReload() error {
 		}
 		ToDel = nil
 	}
+	s.createProcesses()
+	s.autoStartProcesses()
+	//using dedicated factored functions above
+	// for name, program := range s.Config.Programs {
 
-	for name, program := range s.Config.Programs {
-		if program.AutoStart {
-			if err := s.startProgram(name); err != nil {
-				s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
-			}
-		}
-	}
+	// 	// ! And add only processes to new programs,
+	// 	// ! otherwise we would add additional processes to existing programs
+	// 	if _, exists := s.Processes[name]; exists == false {
+	// 		for i := 0; i < program.NumProcs; i++ {
+	// 			process := &Process{
+	// 				Name:    name,
+	// 				Config:  &program,
+	// 				state:   STOPPED,
+	// 				retries: 0,
+	// 				idx:     i,
+	// 			}
+	// 			s.Processes[name] = append(s.Processes[name], process)
+
+	// 		}
+	// 	}
+
+	// 	if program.AutoStart {
+	// 		if err := s.startProgram(name); err != nil {
+	// 			s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
+	// 		}
+	// 	}
+	// }
+	// for name, program := range s.Config.Programs {
+	// 	if program.AutoStart {
+	// 		if err := s.startProgram(name); err != nil {
+	// 			s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
+	// 		}
+	// 	}
+	// }
 	return nil
 }
 
-func (s *Supervisor) autoStartProcesses() {
-
-	// * This could be optimised using a worker pool to gather all programs in parallel
-	// * using goroutines and a WaitGroup, but it could also be risky and probably overkill
-	for name, program := range s.Config.Programs {
-
-		for i := 0; i < program.NumProcs; i++ {
-			process := &Process{
-				Name:    name,
-				Config:  &program,
-				state:   STOPPED,
-				retries: 0,
-				idx:     i,
-			}
-			s.Processes[name] = append(s.Processes[name], process)
-
+func (s *Supervisor) sizedownProcesses(name string, n int) int {
+	var deleted int
+	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
+	s.bigmu.Lock()
+	defer s.bigmu.Unlock()
+	//processes := s.Processes[name]
+	if len(s.Processes[name]) == 0 {
+		return deleted
+	}
+	//deadlocks with 2 imbricated locks?
+	x := len(s.Processes[name])
+	for i := x - 1; i >= 0 && n > 0; i-- {
+		//processes[i].mu.Lock()
+		isActive := s.Processes[name][i].state == RUNNING || s.Processes[name][i].state == STARTING || s.Processes[name][i].state == BACKOFF
+		//first removing any process not running or in starting condition
+		if isActive == false {
+			//switching last value of the slice with the process to remove from the slice
+			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
+			//removing the last element
+			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
+			n--
+			deleted++
+			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
+			fmt.Printf("N: %d\n", n)
 		}
+		//processes[i].mu.Unlock()
+	}
+	if len(s.Processes[name]) == 0 {
+		return deleted
+	}
+	//if n > 0 we need to stop some other processes, the running ones starting from the last
+	if n > 0 {
+		x := len(s.Processes[name])
+		for i := x - 1; i >= 0 && n > 0; i-- {
+			//stopping process
+			if err := s.stopProcess(s.Processes[name][i], s.Config.Programs[name]); err != nil {
+				continue
+			}
+			//switching last value of the slice with the process to remove from the slice
+			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
+			//removing the last element
+			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
+			n--
+			deleted++
+			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
+			fmt.Printf("N: %d\n", n)
+		}
+	}
+	return deleted
+}
 
+func (s *Supervisor) updateIdx(name string) {
+	s.bigmu.Lock()
+	defer s.bigmu.Unlock()
+	for i := 0; i < len(s.Processes[name]); i++ {
+		s.Processes[name][i].idx = i
+	}
+}
+
+func (s *Supervisor) createProcesses() {
+	var deleted int
+	var added int
+	for name, program := range s.Config.Programs {
+		NumProcs := program.NumProcs
+		if len(s.Processes[name]) < NumProcs || len(s.Processes[name]) == 0 {
+			x := len(s.Processes[name])
+			for i := x; i < NumProcs; i++ {
+				process := &Process{
+					Name:    name,
+					Config:  &program,
+					state:   STOPPED,
+					retries: 0,
+					//idx:     s.getMaxIdx(name) + 1,
+				}
+				s.Processes[name] = append(s.Processes[name], process)
+				added++
+			}
+			s.updateIdx(name)
+		} else if len(s.Processes[name]) > NumProcs {
+			deleted += s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
+			s.updateIdx(name)
+		}
+		// for i := 0; i < program.NumProcs; i++ {
+		// 	process := &Process{
+		// 		Name:    name,
+		// 		Config:  &program,
+		// 		state:   STOPPED,
+		// 		retries: 0,
+		// 		idx:     i,
+		// 	}
+		// 	s.Processes[name] = append(s.Processes[name], process)
+		// }
+	}
+	fmt.Printf("%d processes were added and %d were deleted\n", added, deleted)
+}
+
+func (s *Supervisor) autoStartProcesses() {
+	for name, program := range s.Config.Programs {
 		if program.AutoStart {
 			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
 			err := s.startProgram(name)
@@ -267,12 +374,11 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	// The error from Wait() will be sent to the process.done channel
 	// and the handleDied handler will decide what to do based on process state and retry policy
 	case err := <-waitDone:
-
 		startTimer.Stop()
 		process.done <- err
+		fmt.Print("CHECK1\n")
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 		return
-
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
 		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx}
@@ -280,7 +386,6 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 
 	err := <-waitDone
 	process.done <- err
-
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 
 }
@@ -303,6 +408,9 @@ func (s *Supervisor) startProgram(name string) error {
 
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
+
+	fmt.Println(s.Processes[name]) // is null after reload - should not be
+
 	if !exists {
 		return fmt.Errorf("program '%s' not found in taskmasterd\n", name)
 	}
@@ -317,7 +425,6 @@ func (s *Supervisor) startProgram(name string) error {
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
 		}
 	}
-
 	return globalErr
 }
 
@@ -409,7 +516,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		s.Logger.Log(fmt.Sprintf("Received process died event for unknown process '%s'", event.Name))
 		return
 	}
-
+	if index >= len(s.Processes[event.Name]) {
+		//s.Logger.Log(fmt.Sprintf("Received process died event for unknown process '%s'", event.Name))
+		return
+	}
 	process := processes[index]
 
 	process.mu.Lock()
@@ -534,7 +644,6 @@ func (s *Supervisor) stopProgram(name string) error {
 // changes its state to STOPPING and waiting for it to exit.
 // If the process does not exit within the StopTime specified in the config, it SIG-kills it.
 func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
-
 	process.mu.Lock()
 	isActive := process.state == RUNNING || process.state == STARTING || process.state == BACKOFF
 	process.mu.Unlock()
@@ -542,7 +651,6 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 	if !isActive {
 		return fmt.Errorf("process '%s' is not RUNNING, STARTING or BACKOFF - cannot stop", process.Name)
 	}
-
 	process.mu.Lock()
 	process.state = STOPPING
 	process.mu.Unlock()
@@ -570,7 +678,6 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 	process.mu.Unlock()
 
 	s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", process.Name))
-
 	return nil
 
 }
@@ -578,6 +685,7 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 func (s *Supervisor) Start() {
 
 	fmt.Printf("Starting processes from config file located in '%s'\n", s.Config.ConfigPath)
+	s.createProcesses()
 	s.autoStartProcesses()
 	s.Ready <- true
 
@@ -585,7 +693,6 @@ func (s *Supervisor) Start() {
 		switch event.Kind {
 
 		case EventProcessDied:
-
 			s.handleDied(event, event.Index)
 
 		case EventProcessReady:
@@ -630,10 +737,13 @@ func (s *Supervisor) Start() {
 			}
 
 		case EventReloadConfig:
-
-			err := s.handleReload()
+			err := s.handleReload(event.Name)
 			if event.RespCh != nil {
-				event.RespCh <- protocol.Response{Ok: err == nil}
+				if err != nil {
+					event.RespCh <- protocol.Response{Ok: false, Msg: err.Error()}
+				} else {
+					event.RespCh <- protocol.Response{Ok: true, Msg: "Config reloaded successfully"}
+				}
 			}
 
 		case EventShutdown:
