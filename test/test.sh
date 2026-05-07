@@ -8,7 +8,7 @@ echo -e "${GREEN}\n************************"
 echo -e "Starting data race tests"
 echo -e "************************\n${NC}"
 
-# bash -c "./data-race.sh"
+bash -c "./data-race.sh"
 
 echo -e "${GREEN}\n******************************"
 echo -e "Starting state assertion tests"
