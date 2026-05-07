@@ -466,11 +466,12 @@ func (s *Supervisor) handleDied(event Event, index int) {
 			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Attempting restart (%d/%d)", event.Name, process.retries+1, process.Config.StartRetries))
 
 			process.retries++
+			retryNum := process.retries
 
 			go func() {
 				// Official supervisor documentation states that the restart strategy is to wait
 				// n+1 seconds before each restart attempt, where n is the number of retries already attempted.
-				time.Sleep(time.Duration(process.retries) * time.Second)
+				time.Sleep(time.Duration(retryNum) * time.Second)
 
 				event := Event{Kind: EventStartProcess, Name: event.Name, Index: event.Index}
 				s.Events <- event
