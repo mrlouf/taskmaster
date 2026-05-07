@@ -331,12 +331,12 @@ func (s *Supervisor) GetStatus(name string) string {
 		process.mu.Lock()
 		state := process.state.String()
 		pid := process.pid
-		process.mu.Unlock()
 		if i == process.Config.NumProcs-1 {
 			str.WriteString("  └── ")
 		} else {
 			str.WriteString("  ├── ")
 		}
+		process.mu.Unlock()
 
 		str.WriteString(fmt.Sprintf("process %d %s", i, state))
 		if pid != 0 {
@@ -359,9 +359,13 @@ func (s *Supervisor) GetStatus(name string) string {
 func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
 
+	process.mu.Lock()
+	cmd := process.cmd
+	process.mu.Unlock()
+
 	waitDone := make(chan error, 1)
 	go func() {
-		waitDone <- process.cmd.Wait()
+		waitDone <- cmd.Wait()
 	}()
 
 	select {
@@ -451,13 +455,13 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 		return fmt.Errorf("failed to start process '%s': %w", process.Name, err)
 	}
 
+	process.mu.Lock()
 	process.cmd = cmd
 	process.pid = cmd.Process.Pid
 	process.startedAt = time.Now()
-	process.mu.Lock()
 	process.state = STARTING
-	process.mu.Unlock()
 	process.done = make(chan error, 1)
+	process.mu.Unlock()
 
 	go s.monitorProcess(process, cfg)
 
@@ -476,6 +480,10 @@ func (s *Supervisor) handleReady(name string, index int) error {
 	if !exists {
 		return fmt.Errorf("process '%s' not found in supervisor", name)
 	}
+
+	processes[index].mu.Lock()
+	defer processes[index].mu.Unlock()
+
 	if processes[index].state != STARTING {
 		return fmt.Errorf("process '%s' is not in STARTING state, cannot transition to ready", name)
 	}
@@ -568,11 +576,12 @@ func (s *Supervisor) handleDied(event Event, index int) {
 			s.Logger.Log(fmt.Sprintf("Process '%s' has terminated. Attempting restart (%d/%d)", event.Name, process.retries+1, process.Config.StartRetries))
 
 			process.retries++
+			retryNum := process.retries
 
 			go func() {
 				// Official supervisor documentation states that the restart strategy is to wait
 				// n+1 seconds before each restart attempt, where n is the number of retries already attempted.
-				time.Sleep(time.Duration(process.retries) * time.Second)
+				time.Sleep(time.Duration(retryNum) * time.Second)
 
 				event := Event{Kind: EventStartProcess, Name: event.Name, Index: event.Index}
 				s.Events <- event

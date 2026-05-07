@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"go.yaml.in/yaml/v4"
 )
@@ -46,6 +47,7 @@ type Program struct {
 }
 
 type Config struct {
+	Mu         sync.Mutex
 	Programs   map[string]Program `yaml:"programs"`
 	ConfigPath string
 }
@@ -99,8 +101,9 @@ func setDefaults(config *Config) {
 
 }
 
-func getNodeConfig(file *os.File) (Config, error) {
-	var cfg Config
+func getNodeConfig(file *os.File) (*Config, error) {
+
+	cfg := &Config{}
 
 	loader, err := io.ReadAll(file)
 	if err != nil {
@@ -110,7 +113,7 @@ func getNodeConfig(file *os.File) (Config, error) {
 		return cfg, err
 	}
 
-	setDefaults(&cfg)
+	setDefaults(cfg)
 
 	return cfg, nil
 }
@@ -129,11 +132,11 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("error while parsing file '%s': %w", path, err)
 	}
 	cfg.ConfigPath = path
-	if err = validate(&cfg); err != nil {
+	if err = validate(cfg); err != nil {
 		// fmt.Printf("err %v", err)
 		return nil, fmt.Errorf("configuration file format error '%s':\n%w", path, err)
 	}
-	return &cfg, nil
+	return cfg, nil
 }
 
 func (c *Config) existingProgram(name string) bool {
@@ -227,6 +230,7 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 		} else {
 			fmt.Printf("[DEBUG] Updating current config of %s\n", name)
 			Current.Programs[name] = NewCfg.Programs[name]
+			Current.Mu.Unlock()
 		}
 	}
 	for name := range toBeDeleted {

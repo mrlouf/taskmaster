@@ -242,7 +242,10 @@ func HandleStart(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
+	server.Config.Mu.Lock()
 	program, exists := server.Config.Programs[name]
+	server.Config.Mu.Unlock()
+
 	if !exists {
 
 		resp.Ok = false
@@ -308,7 +311,9 @@ func HandleStop(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
+	server.Config.Mu.Lock()
 	program, exists := server.Config.Programs[name]
+	server.Config.Mu.Unlock()
 	if !exists {
 
 		resp.Ok = false
@@ -397,7 +402,10 @@ func HandleProgramStatus(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
+	server.Config.Mu.Lock()
 	program, exists := server.Config.Programs[name]
+	server.Config.Mu.Unlock()
+
 	if !exists {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
@@ -423,12 +431,17 @@ func HandleAllStatus(client Client, server *Server) error {
 	var resp protocol.Response
 	resp.Ok = true
 
+	server.Config.Mu.Lock()
+	programs := server.Config.Programs
+
 	// ! Iterating over maps in Go does not guarantee order,
 	// ! so we need to sort the program names in a slice first.
-	keys := make([]string, 0, len(server.Config.Programs))
-	for name := range server.Config.Programs {
+	keys := make([]string, 0, len(programs))
+	for name := range programs {
 		keys = append(keys, name)
 	}
+
+	server.Config.Mu.Unlock()
 
 	slices.Sort(keys)
 
