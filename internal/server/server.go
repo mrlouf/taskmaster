@@ -251,15 +251,15 @@ func HandleStart(client Client, name string, server *Server) error {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 
-	} else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
+		// } else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
 
-		resp.Ok = false
-		resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
+		// 	resp.Ok = false
+		// 	resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
 
-	} else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
+		// } else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
 
-		resp.Ok = false
-		resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
+		// 	resp.Ok = false
+		// 	resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
 
 	} else {
 
