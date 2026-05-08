@@ -223,11 +223,14 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
+			Current.Mu.Lock()
 			fmt.Printf("[DEBUG] Program %s not found in new file, to be deleted\n", name)
 			Deletion.addProgram(&program, name)
 			fmt.Printf("[DEBUG] Added to Deletion\n")
 			toBeDeleted[name] = program
+			Current.Mu.Unlock()
 		} else {
+			Current.Mu.Lock()
 			fmt.Printf("[DEBUG] Updating current config of %s\n", name)
 			Current.Programs[name] = NewCfg.Programs[name]
 			Current.Mu.Unlock()
@@ -239,8 +242,10 @@ func ReloadConfig(Current *Config, path string) (*Config, error) {
 	}
 	for name, program := range NewCfg.Programs {
 		if !Current.existingProgram(name) {
+			Current.Mu.Lock()
 			fmt.Printf("[DEBUG] Adding new program to config\n")
 			Current.addProgram(&program, name)
+			Current.Mu.Unlock()
 		}
 	}
 	Current.ConfigPath = path
