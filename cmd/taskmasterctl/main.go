@@ -80,7 +80,7 @@ func parseCommand(line string) (protocol.Request, error) {
 		req.Cmd == "reload" ||
 		req.Cmd == "status" {
 
-		if req.Name == "" && (req.Cmd != "status" && req.Cmd != "reload") {
+		if req.Name == "" && (req.Cmd != "status" && req.Cmd != "reload" && req.Cmd != "restart") {
 			return protocol.Request{}, fmt.Errorf("Error: command '%s' requires a program name", req.Cmd)
 		} else if len(parts) > 2 {
 

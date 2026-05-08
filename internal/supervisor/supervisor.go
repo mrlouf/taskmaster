@@ -25,7 +25,7 @@ const (
 	EventStopProgram
 	EventStartProcess
 	EventStopProcess
-	EventRestartProcess
+	EventRestartProgram
 	EventReloadConfig
 	EventShutdown
 	EventStatusRequest
@@ -409,8 +409,6 @@ func (s *Supervisor) startProgram(name string) error {
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
 
-	fmt.Println(s.Processes[name]) // is null after reload - should not be
-
 	if !exists {
 		return fmt.Errorf("program '%s' not found in taskmasterd\n", name)
 	}
@@ -447,6 +445,7 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 	cmd.Dir = cfg.WorkingDir
 
 	// TODO: handle stdout/stderr redirection to files if specified in config
+	// TODO: with the possibility of discarding it totally, maybe with os.DevNull
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -472,6 +471,28 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 	}
 
 	return nil
+}
+
+func (s *Supervisor) restartProgram(name string) error {
+
+	var err error
+
+	if name == "" {
+
+		for program := range s.Config.Programs {
+
+			err = s.stopProgram(program)
+			err = s.startProgram(program)
+
+		}
+
+	} else {
+
+		err = s.stopProgram(name)
+		err = s.startProgram(name)
+
+	}
+	return err
 }
 
 func (s *Supervisor) handleReady(name string, index int) error {
@@ -734,6 +755,17 @@ func (s *Supervisor) Start() {
 			err := s.stopProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
+			}
+
+		case EventRestartProgram:
+
+			err := s.restartProgram(event.Name)
+			if event.RespCh != nil {
+				if err != nil {
+					event.RespCh <- protocol.Response{Ok: false, Msg: err.Error()}
+				} else {
+					event.RespCh <- protocol.Response{Ok: true, Msg: "Program restarted successfully"}
+				}
 			}
 
 		case EventReloadConfig:
