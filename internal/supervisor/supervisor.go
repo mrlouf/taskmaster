@@ -481,15 +481,15 @@ func (s *Supervisor) restartProgram(name string) error {
 
 		for program := range s.Config.Programs {
 
-			err = s.stopProgram(program)
-			err = s.startProgram(program)
+			err = errors.Join(err, s.stopProgram(program))
+			err = errors.Join(err, s.startProgram(program))
 
 		}
 
 	} else {
 
-		err = s.stopProgram(name)
-		err = s.startProgram(name)
+		err = errors.Join(err, s.stopProgram(name))
+		err = errors.Join(err, s.startProgram(name))
 
 	}
 	return err
