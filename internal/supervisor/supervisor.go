@@ -255,9 +255,11 @@ func (s *Supervisor) autoStartProcesses() {
 	for name, program := range s.Config.Programs {
 		if program.AutoStart {
 			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
-			err := s.startProgram(name)
+			err, warn := s.startProgram(name)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
+			} else if warn != nil {
+				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, err))
 			}
 		}
 	}
@@ -404,7 +406,7 @@ func convertEnvMapToSlice(envMap map[string]string) []string {
 
 // Wrapper function to start a program by name, which will in turn
 // call the startProcess function for each subprocess of the program.
-func (s *Supervisor) startProgram(name string) error {
+func (s *Supervisor) startProgram(name string) (error, error) {
 
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
@@ -412,7 +414,7 @@ func (s *Supervisor) startProgram(name string) error {
 	fmt.Println(s.Processes[name]) // is null after reload - should not be
 
 	if !exists {
-		return fmt.Errorf("program '%s' not found in taskmasterd\n", name)
+		return fmt.Errorf("program '%s' not found in taskmasterd\n", name), nil
 	}
 
 	var globalErr error
@@ -425,7 +427,7 @@ func (s *Supervisor) startProgram(name string) error {
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
 		}
 	}
-	return globalErr
+	return nil, globalErr
 }
 
 func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
@@ -704,11 +706,13 @@ func (s *Supervisor) Start() {
 
 		case EventStartProgram:
 
-			err := s.startProgram(event.Name)
+			err, warn := s.startProgram(event.Name)
 			if event.RespCh != nil {
 				resp := protocol.Response{Ok: err == nil}
 				if err != nil {
 					resp.Msg = err.Error()
+				} else if warn != nil {
+					resp.Msg = fmt.Sprintf("Program '%s' started with warnings: %v", event.Name, warn)
 				} else {
 					resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
 				}
