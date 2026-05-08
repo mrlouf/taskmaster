@@ -8,8 +8,8 @@ CONTROLLER := taskmasterctl
 CONTROLLER_DIR := ./cmd/taskmasterctl
 
 all: $(DAEMON) $(CONTROLLER)
-	go build -o $(DAEMON) $(DAEMON_DIR)
-	go build -o $(CONTROLLER) $(CONTROLLER_DIR)
+	go build -race -o $(DAEMON) $(DAEMON_DIR)
+	go build -race -o $(CONTROLLER) $(CONTROLLER_DIR)
 
 $(DAEMON): $(DAEMON_DIR)/*.go
 	go build -o $@ $(DAEMON_DIR)
@@ -26,6 +26,9 @@ clean: pkill
 
 log:
 	rm -f taskmaster.log
+
+test: all
+	cd test && ./test.sh
 
 re: clean all
 
@@ -45,4 +48,4 @@ pkill:
 	-@pkill -f $(CONTROLLER) &>/dev/null || true
 	rm -f /tmp/taskmaster.sock
 
-.PHONY: all clean re dev pkill
+.PHONY: all clean re dev pkill test log

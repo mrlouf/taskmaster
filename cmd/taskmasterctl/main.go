@@ -6,9 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -16,6 +14,30 @@ import (
 	"github.com/mrlouf/taskmaster/internal/protocol"
 	"github.com/mrlouf/taskmaster/internal/server"
 )
+
+func printHelp() {
+
+	fmt.Printf(
+		`  __                 __                            __                
+_/  |______    _____|  | __ _____ _____    _______/  |_  ___________ 
+\   __\__  \  /  ___/  |/ //     \\__  \  /  ___/\   __\/ __ \_  __ \
+ |  |  / __ \_\___ \|    <|  Y Y  \/ __ \_\___ \  |  | \  ___/|  | \/
+ |__| (____  /____  >__|_ \__|_|  (____  /____  > |__|  \___  >__|   
+           \/     \/     \/     \/     \/     \/            \/       
+Usage:
+ start <programs>	: start one or multiple programs
+ stop <programs>	: stop one or multiple programs
+ status [programs]	: display the status of one or multiple programs.
+ 				Display all programs if no name is provided
+ restart <programs>	: restart one or multiple programs
+ reload			: reload the configuration
+ shutdown		: shutdown the server
+ help			: display this help message
+ healthcheck		: perform a health check
+ exit			: exit the controller
+
+`)
+}
 
 func gracefulExit(rl *readline.Instance) {
 
@@ -37,7 +59,6 @@ func parseCommand(line string) (protocol.Request, error) {
 	}
 
 	if req.Cmd == "help" ||
-		req.Cmd == "reload" ||
 		req.Cmd == "shutdown" ||
 		req.Cmd == "healthcheck" ||
 		req.Cmd == "exit" {
@@ -56,9 +77,10 @@ func parseCommand(line string) (protocol.Request, error) {
 	if req.Cmd == "start" ||
 		req.Cmd == "stop" ||
 		req.Cmd == "restart" ||
+		req.Cmd == "reload" ||
 		req.Cmd == "status" {
 
-		if req.Name == "" && req.Cmd != "status" {
+		if req.Name == "" && (req.Cmd != "status" && req.Cmd != "reload") {
 			return protocol.Request{}, fmt.Errorf("Error: command '%s' requires a program name", req.Cmd)
 		} else if len(parts) > 2 {
 
@@ -108,7 +130,7 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 	case "reload":
 
-		return server.RequestReload(client)
+		return server.RequestReload(client, name)
 
 	case "shutdown":
 
@@ -120,26 +142,7 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 	case "help":
 
-		fmt.Printf(`  __                 __                            __                
-_/  |______    _____|  | __ _____ _____    _______/  |_  ___________ 
-\   __\__  \  /  ___/  |/ //     \\__  \  /  ___/\   __\/ __ \_  __ \
- |  |  / __ \_\___ \|    <|  Y Y  \/ __ \_\___ \  |  | \  ___/|  | \/
- |__| (____  /____  >__|_ \__|_|  (____  /____  > |__|  \___  >__|   
-           \/     \/     \/     \/     \/     \/            \/       
-Usage:
- start <programs>	: start one or multiple programs
- stop <programs>	: stop one or multiple programs
- status [programs]	: display the status of one or multiple programs.
- 				Display all programs if no name is provided
- restart <programs>	: restart one or multiple programs
- reload			: reload the configuration
- shutdown		: shutdown the server
- help			: display this help message
- healthcheck		: perform a health check
- exit			: exit the controller
-
-`)
-
+		printHelp()
 		return nil
 
 	case "exit":
@@ -170,7 +173,7 @@ func connectToSocket() (server.Client, error) {
 			}
 			count++
 			if count >= 5 {
-				return c, fmt.Errorf("failed to connect to socket after 5 attempts: %w", err)
+				return c, fmt.Errorf("connection failed after 5 attempts: %w", err)
 			}
 		}
 	}
@@ -182,7 +185,77 @@ func connectToSocket() (server.Client, error) {
 	return c, nil
 }
 
+func getProgramNames(c server.Client) func(string) []string {
+	return func(line string) []string {
+
+		resp, err := server.RequestProgramList(c)
+		if err != nil {
+			return []string{}
+		}
+
+		fmt.Println(resp)
+		return resp
+	}
+}
+
+func listLocalFiles(path string) func(string) []string {
+	return func(line string) []string {
+		names := make([]string, 0)
+		files, _ := os.ReadDir(path)
+		for _, f := range files {
+			names = append(names, strings.TrimRight(f.Name(), "\n"))
+		}
+		return names
+	}
+}
+
+func setReadlineAutocomplete(rl *readline.Instance, c *server.Client) {
+
+	// TODO: Implement dynamic autocomplete that updates the list of programs after each command execution
+
+	rl.Config.AutoComplete = readline.NewPrefixCompleter(
+		readline.PcItem("start",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
+		readline.PcItem("stop",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
+		readline.PcItem("restart"),
+		readline.PcItem("status",
+			readline.PcItemDynamic(getProgramNames(*c)),
+		),
+		readline.PcItem("reload",
+			readline.PcItem("-c",
+				readline.PcItemDynamic(listLocalFiles("./"))),
+		),
+		readline.PcItem("shutdown"),
+		readline.PcItem("healthcheck"),
+		readline.PcItem("help"),
+		readline.PcItem("exit"),
+	)
+
+}
+
 func run() error {
+
+	/* 	// ? Necessary? Readline handles SIGINT and EOF internally
+	   	c := make(chan os.Signal, 1)
+	   	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	   	go func() {
+	   		<-c
+	   		fmt.Println("Goodbye!")
+	   		gracefulExit(rl)
+	   	}() */
+
+	client, err := connectToSocket()
+	if err != nil {
+		return fmt.Errorf("cannot connect to socket: %w\nIs the daemon running?", err)
+	}
+
+	client.Programs, err = server.RequestProgramList(client)
+	if err != nil {
+		return fmt.Errorf("failed to get program list: %w", err)
+	}
 
 	rl, err := readline.New("taskmasterctl> ")
 	if err != nil {
@@ -190,19 +263,7 @@ func run() error {
 	}
 	defer rl.Close()
 
-	// ? Necessary? Readline handles SIGINT and EOF internally
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		fmt.Println("Goodbye!")
-		gracefulExit(rl)
-	}()
-
-	client, err := connectToSocket()
-	if err != nil {
-		return fmt.Errorf("failed to connect to socket: %w", err)
-	}
+	setReadlineAutocomplete(rl, &client)
 
 	for {
 		line, err := rl.Readline()

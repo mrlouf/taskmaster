@@ -8,7 +8,7 @@ tmp_dir = "tmp"
 [build]
   args_bin = ["-c", "./conf/taskmaster.conf"]
   bin = "./taskmasterd"
-  cmd = "go build -o ./taskmasterd ./cmd/taskmasterd"
+  cmd = "go build -race -o ./taskmasterd ./cmd/taskmasterd"
   delay = 1000
   entrypoint = ["./taskmasterd"]
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]

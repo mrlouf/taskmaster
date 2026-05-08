@@ -1,25 +1,23 @@
 # TODO
 
-## Routines
+## Redirections
 
-- On start, the daemon should read the configuration file and start all programs marked as "autostart" automatically.
+The taskmaster should be able to redirect the stdout and stderr of the managed processes to log files. This can be achieved by using the `os/exec` package in Go, which allows us to set the `Stdout` and `Stderr` fields of the `Cmd` struct to file handles.
 
-- Implement the supervisor state flow:
+We need to account for file handling: create log files if they don't exist, error management if trying to write to a file that can't be accessed, etc.
 
-STOPPED → STARTING → RUNNING → EXITED  (exit attendu)
-                   ↘ BACKOFF            (mort pendant starttime)
-                              ↘ FATAL   (trop de retries)
-          RUNNING  → STOPPING → STOPPED (stop manuel)
+## Reload: subtle cases
 
-## Subprocess Management
+According to the supervisor documentation, sending `SIGHUP` to the daemon will trigger a blind stop of all programs followed by a reload of the first configuration file found. Autostart programs will be restarted after the reload.
 
-- The daemon should start each program as a N subprocesses, where N is the number of instances specified in the configuration file for that program. Each instance should be managed independently, with its own state and retry count.
+We need to be more considerate in our implementation of the reload command, as the subject requires us to only stop programs that have been modified. This is easily done doing a diff between old and new conf files.
 
-## Retry Policy
+There are some edge cases to consider though:
 
-The program should follow the following retry policy definitions:
+- Adding more subprocesses to an existing program: we should only start the new subprocesses, not the whole program.
+- Removing subprocesses from an existing program: we should only stop the removed subprocesses, not the whole program.
+- Changing any other parameter of an existing program (command, environment variables, working directory, etc.): we should stop the whole program and start it again with the new configuration.
 
-- always: The program should be restarted regardless of the exit status or reason for termination, until the maximum number of retries is reached.
-- never: The program should not be restarted. This overrides any restart conditions and means that the program will only be started once, and if it exits (successfully or with an error), it will not be restarted.
-- on-failure: The program should be restarted only if it fails to start. This means that if the program exits with a non-zero exit code during the start phase (id. transition between STARTING and RUNNING), it should be restarted according to the retry policy. However, if the program starts successfully and then later exits (either with a zero or non-zero exit code), it will not be restarted.
-- unexpected: The program should be restarted only if it exits unexpectedly.
+## Restart
+
+I was going to trash the restart command, but the subject actually seems to require it, so I guess we'll have to implement it. It should be straightforward: kill the program and start it again with the same configuration. We can reuse the existing stop and start functions for this so I don't expect much more code to be added here.
