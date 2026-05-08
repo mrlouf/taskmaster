@@ -224,17 +224,15 @@ func RequestStart(client Client, name string) error {
 		return fmt.Errorf("failed to receive start response: %w", err)
 	}
 
-	if !resp.Ok {
-		if strings.Contains(resp.Msg, "RUNNING") {
-			return fmt.Errorf("program '%s' is already running", name)
-		} else if strings.Contains(resp.Msg, "STARTING") {
-			return fmt.Errorf("program '%s' is already starting", name)
+	if resp.Ok {
+		prefix := "Program '" + name + "' started with warnings:"
+		if warnMsg, exists := strings.CutPrefix(resp.Msg, prefix); exists {
+			return fmt.Errorf("program '%s' started but with following warnings:\n%s", name, strings.TrimSpace(warnMsg))
 		}
+		fmt.Printf("Program '%s' started\n", name)
+	} else if !resp.Ok {
 		return fmt.Errorf("start command: %s", resp.Msg)
 	}
-
-	fmt.Printf("Program '%s' started\n", name)
-
 	return nil
 }
 
@@ -251,15 +249,15 @@ func HandleStart(client Client, name string, server *Server) error {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 
-	} else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
+		// } else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
 
-		resp.Ok = false
-		resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
+		// 	resp.Ok = false
+		// 	resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
 
-	} else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
+		// } else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
 
-		resp.Ok = false
-		resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
+		// 	resp.Ok = false
+		// 	resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
 
 	} else {
 
