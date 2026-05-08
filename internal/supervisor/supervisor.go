@@ -3,108 +3,13 @@ package supervisor
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"slices"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/mrlouf/taskmaster/internal/config"
-	"github.com/mrlouf/taskmaster/internal/logger"
 	"github.com/mrlouf/taskmaster/internal/protocol"
 )
-
-type EventKind int
-
-const (
-	EventProcessDied EventKind = iota
-	EventProcessReady
-	EventStartProgram
-	EventStopProgram
-	EventStartProcess
-	EventStopProcess
-	EventRestartProcess
-	EventReloadConfig
-	EventShutdown
-	EventStatusRequest
-)
-
-type Event struct {
-	Kind   EventKind
-	Name   string                 // nom du programme ou  reload config file
-	Index  int                    // numéro d'instance si numprocs > 1
-	Err    error                  // pour EventProcessDied
-	RespCh chan protocol.Response // pour les commandes qui attendent une réponse
-}
-
-type State int
-
-const (
-	STOPPED State = iota
-	STARTING
-	RUNNING
-	STOPPING
-	EXITED
-	BACKOFF
-	FATAL
-)
-
-func (s State) String() string {
-	switch s {
-	case STOPPED:
-		return "STOPPED"
-	case STARTING:
-		return "STARTING"
-	case RUNNING:
-		return "RUNNING"
-	case STOPPING:
-		return "STOPPING"
-	case EXITED:
-		return "EXITED"
-	case BACKOFF:
-		return "BACKOFF"
-	case FATAL:
-		return "FATAL"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-type Process struct {
-	Name   string
-	Config *config.Program
-
-	idx       int
-	cmd       *exec.Cmd
-	state     State
-	mu        sync.Mutex
-	pid       int
-	startedAt time.Time
-	done      chan error
-	retries   int
-}
-
-type Supervisor struct {
-	Config    *config.Config
-	Logger    *logger.Logger
-	bigmu     sync.Mutex
-	Processes map[string][]*Process
-	Events    chan Event
-	Ready     chan bool
-}
-
-func New(config *config.Config, logger *logger.Logger) *Supervisor {
-
-	return &Supervisor{
-		Config:    config,
-		Logger:    logger,
-		Processes: make(map[string][]*Process),
-		Events:    make(chan Event, 100), // ! 100 is arbitrary
-		Ready:     make(chan bool, 1),
-	}
-}
 
 func (s *Supervisor) handleReload(path string) error {
 	if ToDel, err := config.ReloadConfig(s.Config, path); err != nil {
@@ -153,116 +58,6 @@ func (s *Supervisor) handleReload(path string) error {
 	// 	}
 	// }
 	return nil
-}
-
-func (s *Supervisor) sizedownProcesses(name string, n int) int {
-	var deleted int
-	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
-	s.bigmu.Lock()
-	defer s.bigmu.Unlock()
-	//processes := s.Processes[name]
-	if len(s.Processes[name]) == 0 {
-		return deleted
-	}
-	//deadlocks with 2 imbricated locks?
-	x := len(s.Processes[name])
-	for i := x - 1; i >= 0 && n > 0; i-- {
-		//processes[i].mu.Lock()
-		isActive := s.Processes[name][i].state == RUNNING || s.Processes[name][i].state == STARTING || s.Processes[name][i].state == BACKOFF
-		//first removing any process not running or in starting condition
-		if isActive == false {
-			//switching last value of the slice with the process to remove from the slice
-			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
-			//removing the last element
-			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
-			n--
-			deleted++
-			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
-			fmt.Printf("N: %d\n", n)
-		}
-		//processes[i].mu.Unlock()
-	}
-	if len(s.Processes[name]) == 0 {
-		return deleted
-	}
-	//if n > 0 we need to stop some other processes, the running ones starting from the last
-	if n > 0 {
-		x := len(s.Processes[name])
-		for i := x - 1; i >= 0 && n > 0; i-- {
-			//stopping process
-			if err := s.stopProcess(s.Processes[name][i], s.Config.Programs[name]); err != nil {
-				continue
-			}
-			//switching last value of the slice with the process to remove from the slice
-			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
-			//removing the last element
-			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
-			n--
-			deleted++
-			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
-			fmt.Printf("N: %d\n", n)
-		}
-	}
-	return deleted
-}
-
-func (s *Supervisor) updateIdx(name string) {
-	s.bigmu.Lock()
-	defer s.bigmu.Unlock()
-	for i := 0; i < len(s.Processes[name]); i++ {
-		s.Processes[name][i].idx = i
-	}
-}
-
-func (s *Supervisor) createProcesses() {
-	var deleted int
-	var added int
-	for name, program := range s.Config.Programs {
-		NumProcs := program.NumProcs
-		if len(s.Processes[name]) < NumProcs || len(s.Processes[name]) == 0 {
-			x := len(s.Processes[name])
-			for i := x; i < NumProcs; i++ {
-				process := &Process{
-					Name:    name,
-					Config:  &program,
-					state:   STOPPED,
-					retries: 0,
-					//idx:     s.getMaxIdx(name) + 1,
-				}
-				s.Processes[name] = append(s.Processes[name], process)
-				added++
-			}
-			s.updateIdx(name)
-		} else if len(s.Processes[name]) > NumProcs {
-			deleted += s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
-			s.updateIdx(name)
-		}
-		// for i := 0; i < program.NumProcs; i++ {
-		// 	process := &Process{
-		// 		Name:    name,
-		// 		Config:  &program,
-		// 		state:   STOPPED,
-		// 		retries: 0,
-		// 		idx:     i,
-		// 	}
-		// 	s.Processes[name] = append(s.Processes[name], process)
-		// }
-	}
-	fmt.Printf("%d processes were added and %d were deleted\n", added, deleted)
-}
-
-func (s *Supervisor) autoStartProcesses() {
-	for name, program := range s.Config.Programs {
-		if program.AutoStart {
-			s.Logger.Log(fmt.Sprintf("Auto-starting program '%s' with command: %s", name, program.Command))
-			err, warn := s.startProgram(name)
-			if err != nil {
-				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
-			} else if warn != nil {
-				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, err))
-			}
-		}
-	}
 }
 
 func (s *Supervisor) handleShutdown() { //events.go
@@ -318,92 +113,6 @@ func (s *Supervisor) handleShutdown() { //events.go
 
 }
 
-func (s *Supervisor) GetStatus(name string) string {
-
-	processes, exists := s.Processes[name]
-	if !exists {
-		return fmt.Sprintf("'%s' not found", name)
-	}
-
-	str := strings.Builder{}
-	str.WriteString(fmt.Sprintf("'%s':\n", name))
-
-	for i, process := range processes {
-
-		process.mu.Lock()
-		state := process.state.String()
-		pid := process.pid
-		if i == process.Config.NumProcs-1 {
-			str.WriteString("  └── ")
-		} else {
-			str.WriteString("  ├── ")
-		}
-		process.mu.Unlock()
-
-		str.WriteString(fmt.Sprintf("process %d %s", i, state))
-		if pid != 0 {
-			str.WriteString(fmt.Sprintf(": PID %d\n", pid))
-		} else {
-			str.WriteString("\n")
-		}
-	}
-
-	status := str.String()
-
-	return status
-
-}
-
-// The monitorProcess function is responsible for monitoring the lifecycle
-// of a process after it has been started. It only monitors and reports the death
-// or the readiness of the process, but the State transition is the responsibility
-// of the event handlers (handleReady and handleDied).
-func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
-	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
-
-	process.mu.Lock()
-	cmd := process.cmd
-	process.mu.Unlock()
-
-	waitDone := make(chan error, 1)
-	go func() {
-		waitDone <- cmd.Wait()
-	}()
-
-	select {
-	// Process is done before start timer expires: could be a crash or a very fast process
-	// In both cases we consider the process as having died, and we won't transition to ready state
-	// The error from Wait() will be sent to the process.done channel
-	// and the handleDied handler will decide what to do based on process state and retry policy
-	case err := <-waitDone:
-		startTimer.Stop()
-		process.done <- err
-		fmt.Print("CHECK1\n")
-		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
-		return
-	// Timer reaches zero: process is considered ready
-	case <-startTimer.C:
-		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx}
-	}
-
-	err := <-waitDone
-	process.done <- err
-	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
-
-}
-
-// Helper function to convert env map to slice of "KEY=VALUE" strings
-// Needed since exec.Cmd.Env expects a slice of strings in the format "KEY=VALUE"
-// but our config uses a map[string]string for environment variables
-func convertEnvMapToSlice(envMap map[string]string) []string {
-
-	env := make([]string, 0, len(envMap))
-	for key, value := range envMap {
-		env = append(env, fmt.Sprintf("%s=%s", key, value))
-	}
-	return env
-}
-
 // Wrapper function to start a program by name, which will in turn
 // call the startProcess function for each subprocess of the program.
 func (s *Supervisor) startProgram(name string) (error, error) {
@@ -430,52 +139,6 @@ func (s *Supervisor) startProgram(name string) (error, error) {
 	return nil, globalErr
 }
 
-func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
-
-	process.mu.Lock()
-	isActive := process.state == RUNNING || process.state == STARTING
-	process.mu.Unlock()
-
-	if isActive {
-		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", process.Name, process.pid)
-	}
-
-	args := strings.Fields(cfg.Command)
-	cmd := exec.Command(args[0], args[1:]...)
-
-	env := os.Environ()
-	env = append(env, convertEnvMapToSlice(cfg.Env)...)
-	cmd.Env = env
-	cmd.Dir = cfg.WorkingDir
-
-	// TODO: handle stdout/stderr redirection to files if specified in config
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start process '%s': %w", process.Name, err)
-	}
-
-	process.mu.Lock()
-	process.cmd = cmd
-	process.pid = cmd.Process.Pid
-	process.startedAt = time.Now()
-	process.state = STARTING
-	process.done = make(chan error, 1)
-	process.mu.Unlock()
-
-	go s.monitorProcess(process, cfg)
-
-	if process.retries > 0 {
-		s.Logger.Log(fmt.Sprintf("Restarted process '%s' with PID %d (retry %d)", process.Name, process.pid, process.retries))
-	} else {
-		s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", process.Name, process.pid))
-	}
-
-	return nil
-}
-
 func (s *Supervisor) handleReady(name string, index int) error {
 
 	processes, exists := s.Processes[name]
@@ -494,17 +157,6 @@ func (s *Supervisor) handleReady(name string, index int) error {
 	s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d is now RUNNING", name, processes[index].pid))
 
 	return nil
-}
-
-func didProcessExitExpectedly(state *os.ProcessState, cfg config.Program) bool {
-
-	if state == nil {
-		return false
-	}
-
-	exitCode := state.ExitCode()
-
-	return slices.Contains(cfg.ExitCodes, exitCode)
 }
 
 // Whenever a process dies, the monitorProcess will send an EventProcessDied event
@@ -601,26 +253,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 	}
 }
 
-func getSignalByName(name string) syscall.Signal {
-
-	switch name {
-	case "TERM":
-		return syscall.SIGTERM
-	case "HUP":
-		return syscall.SIGHUP
-	case "INT":
-		return syscall.SIGINT
-	case "KILL":
-		return syscall.SIGKILL
-	case "USR1":
-		return syscall.SIGUSR1
-	case "USR2":
-		return syscall.SIGUSR2
-	default:
-		return syscall.SIGTERM // default to SIGTERM if unknown signal is specified
-	}
-}
-
 // Wrapper function to stop a program by name, which will in turn
 // call the stopProcess function for each instance of the program.
 func (s *Supervisor) stopProgram(name string) error {
@@ -639,49 +271,6 @@ func (s *Supervisor) stopProgram(name string) error {
 	}
 
 	return nil
-}
-
-// The stopProcess function is responsible for stopping a specific subprocess.
-// It attempts to gracefully stop the process by sending the signal specified in the config,
-// changes its state to STOPPING and waiting for it to exit.
-// If the process does not exit within the StopTime specified in the config, it SIG-kills it.
-func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
-	process.mu.Lock()
-	isActive := process.state == RUNNING || process.state == STARTING || process.state == BACKOFF
-	process.mu.Unlock()
-
-	if !isActive {
-		return fmt.Errorf("process '%s' is not RUNNING, STARTING or BACKOFF - cannot stop", process.Name)
-	}
-	process.mu.Lock()
-	process.state = STOPPING
-	process.mu.Unlock()
-
-	signal := getSignalByName(cfg.StopSignal)
-	s.Logger.Log(fmt.Sprintf("Sending signal %s to process '%s' with PID %d", cfg.StopSignal, process.Name, process.pid))
-	process.cmd.Process.Signal(signal)
-
-	// Wait for the process to exit gracefully,
-	// but if it doesn't exit within the StopTime, force kill it
-	select {
-	case process.cmd.Err = <-process.done:
-
-	case <-time.After(time.Duration(cfg.StopTime) * time.Second):
-		process.cmd.Process.Kill()
-		process.cmd.Err = <-process.done
-	}
-
-	// Reset process state and metadata after it has stopped
-	process.mu.Lock()
-	process.state = STOPPED
-	process.retries = 0
-	process.done = nil
-	process.pid = 0
-	process.mu.Unlock()
-
-	s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", process.Name))
-	return nil
-
 }
 
 func (s *Supervisor) Start() {
