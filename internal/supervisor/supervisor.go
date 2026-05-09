@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Supervisor) handleReload(path string) error {
-	if ToDel, err := config.ReloadConfig(s.Config, path); err != nil {
+	if ToDel, err := config.ReloadConfig(s.Config, path, *s.Logger); err != nil {
 
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err

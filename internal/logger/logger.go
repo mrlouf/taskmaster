@@ -22,7 +22,7 @@ func New() (*Logger, error) {
 	}
 
 	var debug atomic.Bool
-	debug.Store(true)
+	debug.Store(false)
 
 	return &Logger{debug: &debug, file: file}, nil
 }
