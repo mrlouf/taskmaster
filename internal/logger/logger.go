@@ -3,11 +3,12 @@ package logger
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
 type Logger struct {
-	debug bool
+	debug *atomic.Bool
 	file  *os.File
 }
 
@@ -19,12 +20,30 @@ func New() (*Logger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
-	return &Logger{debug: true, file: file}, nil
+
+	var debug atomic.Bool
+	debug.Store(true)
+
+	return &Logger{debug: &debug, file: file}, nil
+}
+
+func (l *Logger) GetDebugFlag() bool {
+
+	return l.debug.Load()
+
+}
+
+func (l *Logger) SetDebugFlag() {
+
+	val := l.debug.Load()
+
+	l.debug.Store(!val)
+
 }
 
 func (l *Logger) Log(message string) error {
 
-	if l.debug {
+	if l.GetDebugFlag() == true {
 		fmt.Printf("[DEBUG] %s\n", message)
 	}
 
