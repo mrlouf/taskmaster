@@ -120,8 +120,6 @@ func (s *Supervisor) startProgram(name string) (error, error) {
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
 
-	fmt.Println(s.Processes[name]) // is null after reload - should not be
-
 	if !exists {
 		return fmt.Errorf("program '%s' not found in taskmasterd\n", name), nil
 	}
