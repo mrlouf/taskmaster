@@ -47,6 +47,14 @@ func (s *Supervisor) createProcesses() {
 	fmt.Printf("%d processes were added and %d were deleted\n", added, deleted)
 }
 
+func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
 func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 
 	process.mu.Lock()
@@ -65,9 +73,22 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
 
-	// TODO: handle stdout/stderr redirection to files if specified in config
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if outfile, err := s.getStdfile(cfg.Stdout); err != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdOut file '%s' for Program '%s': '%w'\n Defaulting to standard output", cfg.Stdout, process.Name, err))
+		cmd.Stdout = os.Stdout
+	} else {
+		cmd.Stdout = outfile
+	}
+
+	if errfile, err := s.getStdfile(cfg.Stderr); err != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdErr file '%s' for Program '%s': '%w'\n Defaulting to standard error output", cfg.Stderr, process.Name, err))
+		cmd.Stdout = os.Stderr
+	} else {
+		cmd.Stdout = errfile
+	}
+	// // TODO: handle stdout/stderr redirection to files if specified in config
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
 
 	err := cmd.Start()
 	if err != nil {
