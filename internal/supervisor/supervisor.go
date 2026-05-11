@@ -134,7 +134,7 @@ func (s *Supervisor) startProgram(name string) (error, string) {
 
 		err := s.startProcess(process, cfg)
 		if err != nil {
-			warning.WriteString(fmt.Sprintf("failed to start process '%s': %w", name, err))
+			warning.WriteString(fmt.Sprintf("failed to start process '%s': %s", name, err.Error()))
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
 		}
 	}
