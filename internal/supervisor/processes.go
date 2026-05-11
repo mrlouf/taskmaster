@@ -60,10 +60,12 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 
 	process.mu.Lock()
 	isActive := process.state == RUNNING || process.state == STARTING
+	name := process.Name
+	pid := process.pid
 	process.mu.Unlock()
 
 	if isActive {
-		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", process.Name, process.pid), nil
+		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, pid)
 	}
 
 	args := strings.Fields(cfg.Command)
@@ -102,9 +104,11 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 	process.startedAt = time.Now()
 	process.state = STARTING
 	process.done = make(chan error, 1)
+	process.runID++
+	runID := process.runID
 	process.mu.Unlock()
 
-	go s.monitorProcess(process, cfg)
+	go s.monitorProcess(process, cfg, runID)
 
 	if process.retries > 0 {
 		s.Logger.Log(fmt.Sprintf("Restarted process '%s' with PID %d (retry %d)", process.Name, process.pid, process.retries))
@@ -121,8 +125,8 @@ func (s *Supervisor) autoStartProcesses() {
 			err, warn := s.startProgram(name)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
-			} else if warn != nil {
-				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, err))
+			} else if warn != "" {
+				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, warn))
 			}
 		}
 	}
@@ -175,7 +179,7 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 // of a process after it has been started. It only monitors and reports the death
 // or the readiness of the process, but the State transition is the responsibility
 // of the event handlers (handleReady and handleDied).
-func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
+func (s *Supervisor) monitorProcess(process *Process, cfg config.Program, runID int) {
 	startTimer := time.NewTimer(time.Duration(cfg.StartTime) * time.Second)
 
 	process.mu.Lock()
@@ -195,16 +199,16 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	// and the handleDied handler will decide what to do based on process state and retry policy
 	case err := <-waitDone:
 		startTimer.Stop()
-		process.done <- err
-		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
+		done <- err
+		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 		return
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
-		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx}
+		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx, RunID: runID}
 	}
 
 	err := <-waitDone
 	done <- err
-	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
+	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 
 }

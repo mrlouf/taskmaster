@@ -100,16 +100,6 @@ func HandleStart(client Client, name string, server *Server) error {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 
-		// } else if strings.Contains(server.Supervisor.GetStatus(name), "RUNNING") {
-
-		// 	resp.Ok = false
-		// 	resp.Msg = fmt.Sprintf("Program '%s' is already running", name)
-
-		// } else if strings.Contains(server.Supervisor.GetStatus(name), "STARTING") {
-
-		// 	resp.Ok = false
-		// 	resp.Msg = fmt.Sprintf("Program '%s' is already starting", name)
-
 	} else {
 
 		server.Logger.Log(fmt.Sprintf("Starting program '%s' with command: %s", name, program.Command))
@@ -167,10 +157,6 @@ func HandleReload(client Client, path string, server *Server) error {
 	}
 	server.Supervisor.Events <- event
 
-	/* 	pid := server.Pid
-	   	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
-	   		return fmt.Errorf("failed to send SIGHUP signal to %d: %w", pid, err)
-	   	} */
 	var resp protocol.Response
 	resp = <-event.RespCh
 
