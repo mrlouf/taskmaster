@@ -29,6 +29,7 @@ type Event struct {
 	Kind   EventKind
 	Name   string                 // nom du programme ou  reload config file
 	Index  int                    // numéro d'instance si numprocs > 1
+	RunID  int                    // compteur de run (incrémente à chaque restart)
 	Err    error                  // pour EventProcessDied
 	RespCh chan protocol.Response // pour les commandes qui attendent une réponse
 }
@@ -78,6 +79,7 @@ type Process struct {
 	startedAt time.Time
 	done      chan error
 	retries   int
+	runID     int
 }
 
 type Supervisor struct {

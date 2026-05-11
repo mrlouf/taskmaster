@@ -60,17 +60,13 @@ func HandleProgramStatus(client Client, name string, server *Server) error {
 	var resp protocol.Response
 
 	server.Config.Mu.Lock()
-	program, exists := server.Config.Programs[name]
+	_, exists := server.Config.Programs[name]
 	server.Config.Mu.Unlock()
 
 	if !exists {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 	} else {
-
-		// ? Keep server logs for status requests?
-		// ? Useful for debugging but too verbose maybe
-		server.Logger.Log(fmt.Sprintf("Getting status of program '%s' with command: %s", name, program.Command))
 
 		resp.Ok = true
 		resp.Msg = server.Supervisor.GetStatus(name)
