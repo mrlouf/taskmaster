@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -55,44 +56,44 @@ func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
 	return file, nil
 }
 
-func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
+func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, error) {
 
 	process.mu.Lock()
 	isActive := process.state == RUNNING || process.state == STARTING
 	process.mu.Unlock()
 
 	if isActive {
-		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", process.Name, process.pid)
+		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", process.Name, process.pid), nil
 	}
 
 	args := strings.Fields(cfg.Command)
 	cmd := exec.Command(args[0], args[1:]...)
+	var warn error
 
 	env := os.Environ()
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
 
-	if outfile, err := s.getStdfile(cfg.Stdout); err != nil {
-		s.Logger.Log(fmt.Sprintf("Error while opening StdOut file '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, err))
+	if outfile, warn1 := s.getStdfile(cfg.Stdout); warn1 != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdOut path '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, warn1))
+		warn = errors.Join(warn, fmt.Errorf("Defaulting to standard output"), warn1)
 		cmd.Stdout = os.Stdout
 	} else {
 		cmd.Stdout = outfile
 	}
 
-	if errfile, err := s.getStdfile(cfg.Stderr); err != nil {
-		s.Logger.Log(fmt.Sprintf("Error while opening StdErr file '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, err))
+	if errfile, warn2 := s.getStdfile(cfg.Stderr); warn2 != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdErr path '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, warn2))
+		warn = errors.Join(warn, fmt.Errorf("Defaulting to error output"), warn2)
 		cmd.Stderr = os.Stderr
 	} else {
 		cmd.Stderr = errfile
 	}
-	// // TODO: handle stdout/stderr redirection to files if specified in config
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
 
 	err := cmd.Start()
 	if err != nil {
-		return fmt.Errorf("failed to start process '%s': %w", process.Name, err)
+		return fmt.Errorf("failed to start process '%s': %w", process.Name, err), nil
 	}
 
 	process.mu.Lock()
@@ -110,8 +111,7 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 	} else {
 		s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", process.Name, process.pid))
 	}
-
-	return nil
+	return nil, warn
 }
 
 func (s *Supervisor) autoStartProcesses() {
@@ -195,7 +195,6 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	case err := <-waitDone:
 		startTimer.Stop()
 		process.done <- err
-		fmt.Print("CHECK1\n")
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 		return
 	// Timer reaches zero: process is considered ready

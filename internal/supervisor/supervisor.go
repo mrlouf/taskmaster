@@ -130,13 +130,17 @@ func (s *Supervisor) startProgram(name string) (error, error) {
 
 	for _, process := range processes {
 
-		err := s.startProcess(process, cfg)
+		err, warn := s.startProcess(process, cfg)
 		if err != nil {
-			globalErr = errors.Join(globalErr, fmt.Errorf("failed to start process '%s': %w", name, err))
+			globalErr = errors.Join(globalErr, fmt.Errorf("failed to start process '%s':\n%w", name, err))
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
+		} else if warn != nil {
+			globalErr = errors.Join(globalErr, fmt.Errorf("Process '%s' started with warnings:\n%w", name, warn))
+			s.Logger.Log(fmt.Sprintf("Process '%s' started with warnings:\n %v", name, warn))
 		}
 	}
 	return nil, globalErr
+
 }
 
 func (s *Supervisor) handleReady(name string, index int) error {
@@ -313,13 +317,22 @@ func (s *Supervisor) Start() {
 			err := s.stopProgram(event.Name)
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
+
 			}
 
 		case EventStartProcess:
 
-			err := s.startProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
+			err, warn := s.startProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
-				event.RespCh <- protocol.Response{Ok: err == nil}
+				resp := protocol.Response{Ok: err == nil}
+				if err != nil {
+					resp.Msg = err.Error()
+				} else if warn != nil {
+					resp.Msg = fmt.Sprintf("Process '%s' started with warnings: %v", event.Name, warn)
+				} else {
+					resp.Msg = fmt.Sprintf("Process '%s' started", event.Name)
+				}
+				event.RespCh <- resp
 			}
 
 		case EventStopProcess:
