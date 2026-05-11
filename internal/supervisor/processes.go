@@ -159,6 +159,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 
 	process.mu.Lock()
 	cmd := process.cmd
+	done := process.done
 	process.mu.Unlock()
 
 	waitDone := make(chan error, 1)
@@ -173,7 +174,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	// and the handleDied handler will decide what to do based on process state and retry policy
 	case err := <-waitDone:
 		startTimer.Stop()
-		process.done <- err
+		done <- err
 		fmt.Print("CHECK1\n")
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 		return
@@ -183,7 +184,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	}
 
 	err := <-waitDone
-	process.done <- err
+	done <- err
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 
 }

@@ -261,14 +261,25 @@ func (s *Supervisor) stopProgram(name string) error {
 	}
 	cfg := s.Config.Programs[name]
 
+	var err error
 	for _, process := range processes {
-		err := s.stopProcess(process, cfg)
-		if err != nil {
-			return err
+		if stopErr := s.stopProcess(process, cfg); stopErr != nil {
+			err = errors.Join(err, stopErr)
 		}
 	}
+	return err
+}
 
-	return nil
+func (s *Supervisor) restartProgram(name string) error {
+	// stop best-effort : on ignore les erreurs "pas actif"
+	if processes, exists := s.Processes[name]; exists {
+		cfg := s.Config.Programs[name]
+		for _, process := range processes {
+			s.stopProcess(process, cfg) // ignoré volontairement
+		}
+	}
+	_, err := s.startProgram(name)
+	return err
 }
 
 func (s *Supervisor) Start() {
@@ -335,6 +346,19 @@ func (s *Supervisor) Start() {
 				} else {
 					event.RespCh <- protocol.Response{Ok: true, Msg: "Config reloaded successfully"}
 				}
+			}
+
+		case EventRestartProgram:
+
+			err := s.restartProgram(event.Name)
+			if event.RespCh != nil {
+				resp := protocol.Response{Ok: err == nil}
+				if err != nil {
+					resp.Msg = err.Error()
+				} else {
+					resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
+				}
+				event.RespCh <- resp
 			}
 
 		case EventShutdown:
