@@ -77,36 +77,38 @@ func (s *Supervisor) handleShutdown() { //events.go
 			wg.Go(func() {
 
 				process.mu.Lock()
-				defer process.mu.Unlock()
-
-				if process.state == RUNNING ||
-					process.state == STARTING ||
-					process.state == BACKOFF {
-
-					cfg := s.Config.Programs[name]
-
-					signal := syscall.SIGTERM
-					s.Logger.Log(fmt.Sprintf("Sending signal %d to process '%s' with PID %d", signal, name, process.pid))
-					process.cmd.Process.Signal(signal)
-
-					cmd := process.cmd
-					done := process.done
-
-					select {
-					case cmd.Err = <-done:
-						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited gracefully", name, process.pid))
-
-					case <-time.After(time.Duration(cfg.StopTime) * time.Second):
-						process.cmd.Process.Kill()
-						cmd.Err = <-done
-
-						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
-					}
-					process.state = STOPPED
-					process.retries = 0
-					process.done = nil
-					process.pid = 0
+				if process.state != RUNNING && process.state != STARTING && process.state != BACKOFF {
+					process.mu.Unlock()
+					return
 				}
+				process.state = STOPPING
+				cmd := process.cmd
+				done := process.done
+				cfg := s.Config.Programs[name]
+				process.mu.Unlock()
+
+				signal := syscall.SIGTERM
+				s.Logger.Log(fmt.Sprintf("Sending signal %d to process '%s' with PID %d", signal, name, process.pid))
+				process.cmd.Process.Signal(signal)
+
+				select {
+				case cmd.Err = <-done:
+					s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited gracefully", name, process.pid))
+
+				case <-time.After(time.Duration(cfg.StopTime) * time.Second):
+					process.cmd.Process.Kill()
+					cmd.Err = <-done
+
+					s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
+				}
+
+				process.mu.Lock()
+				process.state = STOPPED
+				process.done = nil
+				process.pid = 0
+				process.retries = 0
+				process.mu.Unlock()
+
 			})
 		}
 	}
