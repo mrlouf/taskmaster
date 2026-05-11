@@ -137,7 +137,7 @@ func (s *Supervisor) startProgram(name string) (error, error) {
 	return nil, globalErr
 }
 
-func (s *Supervisor) handleReady(name string, index int) error {
+func (s *Supervisor) handleReady(name string, index int, runID int) error {
 
 	processes, exists := s.Processes[name]
 	if !exists {
@@ -146,6 +146,10 @@ func (s *Supervisor) handleReady(name string, index int) error {
 
 	processes[index].mu.Lock()
 	defer processes[index].mu.Unlock()
+
+	if processes[index].runID != runID {
+		return nil
+	}
 
 	if processes[index].state != STARTING {
 		return fmt.Errorf("process '%s' is not in STARTING state, cannot transition to ready", name)
@@ -176,6 +180,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 
 	process.mu.Lock()
 	defer process.mu.Unlock()
+
+	if process.runID != event.RunID {
+		return
+	}
 
 	// Ignore if the process is manually stopping or has already been stopped
 	if process.state == STOPPING || process.state == STOPPED {
@@ -297,7 +305,7 @@ func (s *Supervisor) Start() {
 
 		case EventProcessReady:
 
-			err := s.handleReady(event.Name, event.Index)
+			err := s.handleReady(event.Name, event.Index, event.RunID)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to handle ready event for program '%s': %v", event.Name, err))
 			}
