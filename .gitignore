@@ -41,3 +41,5 @@ go.work.sum
  .vscode/
 .vscode/settings.json
 internal/config/config.go
+*.stdout
+*.stderr
