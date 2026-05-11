@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,15 @@ func (s *Supervisor) createProcesses() {
 	fmt.Printf("%d processes were added and %d were deleted\n", added, deleted)
 }
 
-func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
+func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, error) {
 
 	process.mu.Lock()
 	isActive := process.state == RUNNING || process.state == STARTING
@@ -61,19 +70,32 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 
 	args := strings.Fields(cfg.Command)
 	cmd := exec.Command(args[0], args[1:]...)
+	var warn error
 
 	env := os.Environ()
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
 
-	// TODO: handle stdout/stderr redirection to files if specified in config
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if outfile, warn1 := s.getStdfile(cfg.Stdout); warn1 != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdOut path '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, warn1))
+		warn = errors.Join(warn, fmt.Errorf("Defaulting to standard output"), warn1)
+		cmd.Stdout = os.Stdout
+	} else {
+		cmd.Stdout = outfile
+	}
+
+	if errfile, warn2 := s.getStdfile(cfg.Stderr); warn2 != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdErr path '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, warn2))
+		warn = errors.Join(warn, fmt.Errorf("Defaulting to error output"), warn2)
+		cmd.Stderr = os.Stderr
+	} else {
+		cmd.Stderr = errfile
+	}
 
 	err := cmd.Start()
 	if err != nil {
-		return fmt.Errorf("failed to start process '%s': %w", process.Name, err)
+		return fmt.Errorf("failed to start process '%s': %w", process.Name, err), nil
 	}
 
 	process.mu.Lock()
@@ -93,8 +115,7 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 	} else {
 		s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", process.Name, process.pid))
 	}
-
-	return nil
+	return nil, warn
 }
 
 func (s *Supervisor) autoStartProcesses() {
