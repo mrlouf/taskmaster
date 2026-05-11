@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Supervisor) handleReload(path string) error {
-	if ToDel, err := config.ReloadConfig(s.Config, path); err != nil {
+	if ToDel, err := config.ReloadConfig(s.Config, path, *s.Logger); err != nil {
 
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err
@@ -119,8 +119,6 @@ func (s *Supervisor) startProgram(name string) (error, error) {
 
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
-
-	fmt.Println(s.Processes[name]) // is null after reload - should not be
 
 	if !exists {
 		return fmt.Errorf("program '%s' not found in taskmasterd\n", name), nil
