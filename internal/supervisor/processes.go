@@ -1,7 +1,6 @@
 package supervisor
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -56,7 +55,7 @@ func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
 	return file, nil
 }
 
-func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, error) {
+func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, string) {
 
 	process.mu.Lock()
 	isActive := process.state == RUNNING || process.state == STARTING
@@ -65,29 +64,30 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 	process.mu.Unlock()
 
 	if isActive {
-		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, pid)
+		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, pid), ""
 	}
 
 	args := strings.Fields(cfg.Command)
 	cmd := exec.Command(args[0], args[1:]...)
-	var warn error
+
+	var warn strings.Builder
 
 	env := os.Environ()
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
 
-	if outfile, warn1 := s.getStdfile(cfg.Stdout); warn1 != nil {
-		s.Logger.Log(fmt.Sprintf("Error while opening StdOut path '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, warn1))
-		warn = errors.Join(warn, fmt.Errorf("Defaulting to standard output"), warn1)
+	if outfile, warn_out := s.getStdfile(cfg.Stdout); warn_out != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdOut path '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, warn_out))
+		warn.WriteString("Defaulting to standard output")
 		cmd.Stdout = os.Stdout
 	} else {
 		cmd.Stdout = outfile
 	}
 
-	if errfile, warn2 := s.getStdfile(cfg.Stderr); warn2 != nil {
-		s.Logger.Log(fmt.Sprintf("Error while opening StdErr path '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, warn2))
-		warn = errors.Join(warn, fmt.Errorf("Defaulting to error output"), warn2)
+	if errfile, warn_err := s.getStdfile(cfg.Stderr); warn_err != nil {
+		s.Logger.Log(fmt.Sprintf("Error while opening StdErr path '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, warn_err))
+		warn.WriteString("Defaulting to standard error")
 		cmd.Stderr = os.Stderr
 	} else {
 		cmd.Stderr = errfile
@@ -95,7 +95,7 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 
 	err := cmd.Start()
 	if err != nil {
-		return fmt.Errorf("failed to start process '%s': %w", process.Name, err), nil
+		return fmt.Errorf("failed to start process '%s': %w", process.Name, err), ""
 	}
 
 	process.mu.Lock()
@@ -115,7 +115,7 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 	} else {
 		s.Logger.Log(fmt.Sprintf("Started process '%s' with PID %d", process.Name, process.pid))
 	}
-	return nil, warn
+	return nil, warn.String()
 }
 
 func (s *Supervisor) autoStartProcesses() {
