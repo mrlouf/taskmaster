@@ -74,17 +74,17 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 	cmd.Dir = cfg.WorkingDir
 
 	if outfile, err := s.getStdfile(cfg.Stdout); err != nil {
-		s.Logger.Log(fmt.Sprintf("Error while opening StdOut file '%s' for Program '%s': '%w'\n Defaulting to standard output", cfg.Stdout, process.Name, err))
+		s.Logger.Log(fmt.Sprintf("Error while opening StdOut file '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, err))
 		cmd.Stdout = os.Stdout
 	} else {
 		cmd.Stdout = outfile
 	}
 
 	if errfile, err := s.getStdfile(cfg.Stderr); err != nil {
-		s.Logger.Log(fmt.Sprintf("Error while opening StdErr file '%s' for Program '%s': '%w'\n Defaulting to standard error output", cfg.Stderr, process.Name, err))
-		cmd.Stdout = os.Stderr
+		s.Logger.Log(fmt.Sprintf("Error while opening StdErr file '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, err))
+		cmd.Stderr = os.Stderr
 	} else {
-		cmd.Stdout = errfile
+		cmd.Stderr = errfile
 	}
 	// // TODO: handle stdout/stderr redirection to files if specified in config
 	// cmd.Stdout = os.Stdout
