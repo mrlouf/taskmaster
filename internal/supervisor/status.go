@@ -18,6 +18,7 @@ func (s *Supervisor) GetStatus(name string) string {
 	for i, process := range processes {
 
 		process.mu.Lock()
+
 		state := process.state.String()
 		pid := process.pid
 		if i == process.Config.NumProcs-1 {
@@ -25,7 +26,6 @@ func (s *Supervisor) GetStatus(name string) string {
 		} else {
 			str.WriteString("  ├── ")
 		}
-		process.mu.Unlock()
 
 		str.WriteString(fmt.Sprintf("process %d %s", i, state))
 		if pid != 0 {
@@ -33,6 +33,8 @@ func (s *Supervisor) GetStatus(name string) string {
 		} else {
 			str.WriteString("\n")
 		}
+
+		process.mu.Unlock()
 	}
 
 	status := str.String()
