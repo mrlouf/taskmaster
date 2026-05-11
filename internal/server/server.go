@@ -148,6 +148,10 @@ func handleRequest(client Client, req protocol.Request, server *Server) error {
 
 		err = HandleProgramList(client, server)
 
+	case "debug":
+
+		err = HandleSetDebugFlag(client, server)
+
 	default:
 		return fmt.Errorf("unknown command: %s", req.Cmd)
 	}
