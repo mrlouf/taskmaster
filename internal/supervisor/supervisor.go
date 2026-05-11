@@ -134,10 +134,13 @@ func (s *Supervisor) startProgram(name string) (error, string) {
 
 	for _, process := range processes {
 
-		err := s.startProcess(process, cfg)
+		err, warn := s.startProcess(process, cfg)
 		if err != nil {
 			warning.WriteString(fmt.Sprintf("failed to start process '%s': %s", name, err.Error()))
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
+		} else if warn != nil {
+      warning.WriteString(fmt.Sprintf("Process '%s' started with warnings:\n%w", name, warn.Error()))
+			s.Logger.Log(fmt.Sprintf("Process '%s' started with warnings:\n %v", name, warn))
 		}
 	}
 
@@ -355,13 +358,22 @@ func (s *Supervisor) Start() {
 			err := s.stopProgram(event.Name)
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: err == nil}
+
 			}
 
 		case EventStartProcess:
 
-			err := s.startProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
+			err, warn := s.startProcess(s.Processes[event.Name][event.Index], s.Config.Programs[event.Name])
 			if event.RespCh != nil {
-				event.RespCh <- protocol.Response{Ok: err == nil}
+				resp := protocol.Response{Ok: err == nil}
+				if err != nil {
+					resp.Msg = err.Error()
+				} else if warn != nil {
+					resp.Msg = fmt.Sprintf("Process '%s' started with warnings: %v", event.Name, warn)
+				} else {
+					resp.Msg = fmt.Sprintf("Process '%s' started", event.Name)
+				}
+				event.RespCh <- resp
 			}
 
 		case EventStopProcess:
