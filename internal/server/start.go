@@ -36,17 +36,20 @@ func HandleRestart(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
-	program, exists := server.Config.Programs[name]
-	if !exists {
+	_, exists := server.Config.Programs[name]
+	if !exists && name != "" {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
 	} else {
 
-		// TODO: Implement restart logic for the program
-		server.Logger.Log(fmt.Sprintf("Restarting program '%s' with command: %s", name, program.Command))
+		event := supervisor.Event{
+			Kind:   supervisor.EventRestartProgram,
+			Name:   name,
+			RespCh: make(chan protocol.Response),
+		}
 
-		resp.Ok = true
-		resp.Msg = fmt.Sprintf("Program '%s' restarted successfully", name)
+		server.Supervisor.Events <- event
+		resp = <-event.RespCh
 
 	}
 

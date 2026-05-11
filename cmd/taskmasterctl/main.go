@@ -140,6 +140,10 @@ func handleRequest(req protocol.Request, client server.Client) error {
 
 		return server.RequestHealthCheck(client)
 
+	case "debug":
+
+		return server.RequestSetDebugFlag(client)
+
 	case "help":
 
 		printHelp()

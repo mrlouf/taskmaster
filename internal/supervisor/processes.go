@@ -180,6 +180,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 
 	process.mu.Lock()
 	cmd := process.cmd
+	done := process.done
 	process.mu.Unlock()
 
 	waitDone := make(chan error, 1)
@@ -203,7 +204,7 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program) {
 	}
 
 	err := <-waitDone
-	process.done <- err
+	done <- err
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, Err: err}
 
 }
