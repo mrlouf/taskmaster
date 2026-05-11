@@ -177,7 +177,6 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program, runID 
 	case err := <-waitDone:
 		startTimer.Stop()
 		done <- err
-		fmt.Print("CHECK1\n")
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 		return
 	// Timer reaches zero: process is considered ready
