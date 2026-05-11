@@ -51,10 +51,12 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) error {
 
 	process.mu.Lock()
 	isActive := process.state == RUNNING || process.state == STARTING
+	name := process.Name
+	pid := process.pid
 	process.mu.Unlock()
 
 	if isActive {
-		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", process.Name, process.pid)
+		return fmt.Errorf("process '%s' is already RUNNING or STARTING with PID %d", name, pid)
 	}
 
 	args := strings.Fields(cfg.Command)
@@ -102,7 +104,7 @@ func (s *Supervisor) autoStartProcesses() {
 			err, warn := s.startProgram(name)
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
-			} else if warn != nil {
+			} else if warn != "" {
 				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, err))
 			}
 		}

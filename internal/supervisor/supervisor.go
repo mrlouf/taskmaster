@@ -3,6 +3,7 @@ package supervisor
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -88,13 +89,16 @@ func (s *Supervisor) handleShutdown() { //events.go
 					s.Logger.Log(fmt.Sprintf("Sending signal %d to process '%s' with PID %d", signal, name, process.pid))
 					process.cmd.Process.Signal(signal)
 
+					cmd := process.cmd
+					done := process.done
+
 					select {
-					case process.cmd.Err = <-process.done:
+					case cmd.Err = <-done:
 						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d has exited gracefully", name, process.pid))
 
 					case <-time.After(time.Duration(cfg.StopTime) * time.Second):
 						process.cmd.Process.Kill()
-						process.cmd.Err = <-process.done
+						cmd.Err = <-done
 
 						s.Logger.Log(fmt.Sprintf("Process '%s' with PID %d did not exit gracefully, sent KILL signal", name, process.pid))
 					}
@@ -115,26 +119,27 @@ func (s *Supervisor) handleShutdown() { //events.go
 
 // Wrapper function to start a program by name, which will in turn
 // call the startProcess function for each subprocess of the program.
-func (s *Supervisor) startProgram(name string) (error, error) {
+func (s *Supervisor) startProgram(name string) (error, string) {
 
 	cfg := s.Config.Programs[name]
 	processes, exists := s.Processes[name]
 
 	if !exists {
-		return fmt.Errorf("program '%s' not found in taskmasterd\n", name), nil
+		return fmt.Errorf("program '%s' not found in taskmasterd\n", name), ""
 	}
 
-	var globalErr error
+	var warning strings.Builder
 
 	for _, process := range processes {
 
 		err := s.startProcess(process, cfg)
 		if err != nil {
-			globalErr = errors.Join(globalErr, fmt.Errorf("failed to start process '%s': %w", name, err))
+			warning.WriteString(fmt.Sprintf("failed to start process '%s': %w", name, err))
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
 		}
 	}
-	return nil, globalErr
+
+	return nil, warning.String()
 }
 
 func (s *Supervisor) handleReady(name string, index int, runID int) error {
@@ -173,7 +178,6 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		return
 	}
 	if index >= len(s.Processes[event.Name]) {
-		//s.Logger.Log(fmt.Sprintf("Received process died event for unknown process '%s'", event.Name))
 		return
 	}
 	process := processes[index]
@@ -211,7 +215,9 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		process.pid = 0
 
 		event := Event{Kind: EventStartProcess, Name: event.Name, Index: event.Index}
-		s.Events <- event
+		go func() {
+			s.Events <- event
+		}()
 
 	case "unexpected":
 
@@ -279,14 +285,31 @@ func (s *Supervisor) stopProgram(name string) error {
 }
 
 func (s *Supervisor) restartProgram(name string) error {
-	// stop best-effort : on ignore les erreurs "pas actif"
-	if processes, exists := s.Processes[name]; exists {
-		cfg := s.Config.Programs[name]
-		for _, process := range processes {
-			s.stopProcess(process, cfg) // ignoré volontairement
+
+	var err error
+
+	if name == "" {
+
+		for program := range s.Processes {
+			s.stopProgram(program) // ignoré volontairement
 		}
+
+		for program := range s.Processes {
+			tmp_err, _ := s.startProgram(program)
+			err = errors.Join(err, tmp_err)
+		}
+
+	} else {
+
+		if processes, exists := s.Processes[name]; exists {
+			cfg := s.Config.Programs[name]
+			for _, process := range processes {
+				s.stopProcess(process, cfg) // ignoré volontairement
+			}
+		}
+		err, _ = s.startProgram(name)
 	}
-	_, err := s.startProgram(name)
+
 	return err
 }
 
@@ -317,7 +340,7 @@ func (s *Supervisor) Start() {
 				resp := protocol.Response{Ok: err == nil}
 				if err != nil {
 					resp.Msg = err.Error()
-				} else if warn != nil {
+				} else if warn != "" {
 					resp.Msg = fmt.Sprintf("Program '%s' started with warnings: %v", event.Name, warn)
 				} else {
 					resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
@@ -364,7 +387,11 @@ func (s *Supervisor) Start() {
 				if err != nil {
 					resp.Msg = err.Error()
 				} else {
-					resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
+					if event.Name == "" {
+						resp.Msg = "All programs restarted"
+					} else {
+						resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
+					}
 				}
 				event.RespCh <- resp
 			}
@@ -375,7 +402,6 @@ func (s *Supervisor) Start() {
 			if event.RespCh != nil {
 				event.RespCh <- protocol.Response{Ok: true, Msg: "Shut down complete"}
 			}
-			// os.Exit(0)
 		}
 	}
 }
