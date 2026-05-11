@@ -19,7 +19,7 @@ const (
 	EventStopProgram
 	EventStartProcess
 	EventStopProcess
-	EventRestartProcess
+	EventRestartProgram
 	EventReloadConfig
 	EventShutdown
 	EventStatusRequest
