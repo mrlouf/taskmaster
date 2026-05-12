@@ -12,8 +12,8 @@ import (
 
 	"github.com/chzyer/readline"
 
-	"github.com/mrlouf/taskmaster/internal/protocol"
-	"github.com/mrlouf/taskmaster/internal/server"
+	"taskmaster/internal/protocol"
+	"taskmaster/internal/server"
 )
 
 func printHelp() {

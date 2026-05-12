@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mrlouf/taskmaster/internal/config"
-	"github.com/mrlouf/taskmaster/internal/logger"
-	"github.com/mrlouf/taskmaster/internal/protocol"
+	"taskmaster/internal/config"
+	"taskmaster/internal/logger"
+	"taskmaster/internal/protocol"
 )
 
 type EventKind int

@@ -3,7 +3,7 @@ package server
 import (
 	"fmt"
 
-	"github.com/mrlouf/taskmaster/internal/protocol"
+	"taskmaster/internal/protocol"
 )
 
 func RequestSetDebugFlag(client Client) error {

@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mrlouf/taskmaster/internal/config"
-	"github.com/mrlouf/taskmaster/internal/protocol"
+	"taskmaster/internal/config"
+	"taskmaster/internal/protocol"
 )
 
 func (s *Supervisor) handleReload(path string) error {
