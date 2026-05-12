@@ -6,7 +6,7 @@ import (
 	"slices"
 	"syscall"
 
-	"github.com/mrlouf/taskmaster/internal/config"
+	"taskmaster/internal/config"
 )
 
 func (s *Supervisor) updateIdx(name string) {

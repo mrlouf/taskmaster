@@ -7,7 +7,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/mrlouf/taskmaster/internal/logger"
+	"taskmaster/internal/logger"
+
 	"go.yaml.in/yaml/v4"
 )
 

@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mrlouf/taskmaster/internal/config"
+	"taskmaster/internal/config"
 )
 
 func (s *Supervisor) createProcesses() {

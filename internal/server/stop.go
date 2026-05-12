@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mrlouf/taskmaster/internal/protocol"
-	"github.com/mrlouf/taskmaster/internal/supervisor"
+	"taskmaster/internal/protocol"
+	"taskmaster/internal/supervisor"
 )
 
 func RequestShutdown(c Client) error {
