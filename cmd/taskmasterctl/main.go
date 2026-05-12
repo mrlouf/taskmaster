@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,7 +50,7 @@ func gracefulExit(rl *readline.Instance) {
 
 func parseCommand(line string) (protocol.Request, error) {
 
-	parts := strings.Split(strings.TrimSpace(line), " ")
+	parts := strings.Fields(line)
 	if len(parts) == 0 {
 		return protocol.Request{}, fmt.Errorf("empty command")
 	}
@@ -72,6 +73,7 @@ func parseCommand(line string) (protocol.Request, error) {
 
 	if len(parts) > 1 {
 		req.Name = parts[1]
+
 	}
 
 	if req.Cmd == "start" ||
@@ -83,6 +85,12 @@ func parseCommand(line string) (protocol.Request, error) {
 		if req.Name == "" && (req.Cmd != "status" && req.Cmd != "reload" && req.Cmd != "restart") {
 			return protocol.Request{}, fmt.Errorf("Error: command '%s' requires a program name", req.Cmd)
 		} else if len(parts) > 2 {
+
+			if req.Cmd == "reload" {
+				fmt.Printf("Warning: Command '%s' takes only one argument, ignoring extra input\n", req.Cmd)
+				req.Name = parts[1]
+				return req, nil
+			}
 
 			// Use a string builder to concatenate all arguments after the command
 			// instead of just using the '+' operator which creates multiple intermediate strings
@@ -191,25 +199,68 @@ func connectToSocket() (server.Client, error) {
 
 func getProgramNames(c server.Client) func(string) []string {
 	return func(line string) []string {
-
 		resp, err := server.RequestProgramList(c)
-		if err != nil {
+		if err != nil || resp == nil {
 			return []string{}
 		}
 
-		fmt.Println(resp)
+		prefix := ""
+		parts := strings.Fields(line)
+		if len(parts) > 1 {
+			prefix = parts[len(parts)-1]
+		}
 
-		return resp
+		if prefix == "" {
+			return resp
+		}
+
+		names := make([]string, 0, len(resp))
+		for _, p := range resp {
+			if strings.HasPrefix(p, prefix) {
+				names = append(names, p)
+			}
+		}
+		return names
 	}
 }
 
 func listLocalFiles(path string) func(string) []string {
 	return func(line string) []string {
 		names := make([]string, 0)
-		files, _ := os.ReadDir(path)
-		for _, f := range files {
-			names = append(names, strings.TrimRight(f.Name(), "\n"))
+
+		prefix := ""
+		parts := strings.Fields(line)
+		if len(parts) > 1 {
+			prefix = strings.TrimSpace(parts[len(parts)-1])
 		}
+
+		var walk func(string, string)
+		walk = func(root string, rel string) {
+			current := filepath.Join(root, rel)
+			files, err := os.ReadDir(current)
+			if err != nil {
+				return
+			}
+
+			for _, f := range files {
+				name := strings.TrimRight(f.Name(), " \n")
+				relPath := filepath.ToSlash(filepath.Join(rel, name))
+				candidate := relPath
+				if f.IsDir() {
+					candidate += "/"
+				}
+
+				if prefix == "" || strings.HasPrefix(candidate, prefix) {
+					names = append(names, candidate)
+				}
+
+				if f.IsDir() {
+					walk(root, filepath.Join(rel, name))
+				}
+			}
+		}
+
+		walk(path, "")
 		return names
 	}
 }
@@ -230,8 +281,7 @@ func setReadlineAutocomplete(rl *readline.Instance, c *server.Client) {
 			readline.PcItemDynamic(getProgramNames(*c)),
 		),
 		readline.PcItem("reload",
-			readline.PcItem("-c",
-				readline.PcItemDynamic(listLocalFiles("./"))),
+			readline.PcItemDynamic(listLocalFiles("./")),
 		),
 		readline.PcItem("shutdown"),
 		readline.PcItem("healthcheck"),
