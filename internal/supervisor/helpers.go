@@ -10,10 +10,12 @@ import (
 )
 
 func (s *Supervisor) updateIdx(name string) {
-	s.bigmu.Lock()
-	defer s.bigmu.Unlock()
+	// s.bigmu.Lock()
+	// defer s.bigmu.Unlock()
 	for i := 0; i < len(s.Processes[name]); i++ {
+		s.Processes[name][i].mu.Lock()
 		s.Processes[name][i].idx = i
+		s.Processes[name][i].mu.Unlock()
 	}
 }
 
@@ -31,8 +33,8 @@ func didProcessExitExpectedly(state *os.ProcessState, cfg config.Program) bool {
 func (s *Supervisor) sizedownProcesses(name string, n int) int {
 	var deleted int
 	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
-	s.bigmu.Lock()
-	defer s.bigmu.Unlock()
+	// s.bigmu.Lock()
+	// defer s.bigmu.Unlock()
 	//processes := s.Processes[name]
 	if len(s.Processes[name]) == 0 {
 		return deleted
@@ -40,18 +42,21 @@ func (s *Supervisor) sizedownProcesses(name string, n int) int {
 	//deadlocks with 2 imbricated locks?
 	x := len(s.Processes[name])
 	for i := x - 1; i >= 0 && n > 0; i-- {
-		//processes[i].mu.Lock()
+		s.Processes[name][i].mu.Lock()
 		isActive := s.Processes[name][i].state == RUNNING || s.Processes[name][i].state == STARTING || s.Processes[name][i].state == BACKOFF
+		s.Processes[name][i].mu.Unlock()
 		//first removing any process not running or in starting condition
 		if isActive == false {
 			//switching last value of the slice with the process to remove from the slice
 			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
+
 			//removing the last element
 			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
 			n--
 			deleted++
+
 		}
-		//processes[i].mu.Unlock()
+
 	}
 	if len(s.Processes[name]) == 0 {
 		return deleted
@@ -60,16 +65,19 @@ func (s *Supervisor) sizedownProcesses(name string, n int) int {
 	if n > 0 {
 		x := len(s.Processes[name])
 		for i := x - 1; i >= 0 && n > 0; i-- {
+			// s.Processes[name][i].mu.Lock()
 			//stopping process
 			if err := s.stopProcess(s.Processes[name][i], s.Config.Programs[name]); err != nil {
 				continue
 			}
 			//switching last value of the slice with the process to remove from the slice
 			s.Processes[name][i], s.Processes[name][len(s.Processes[name])-1] = s.Processes[name][len(s.Processes[name])-1], s.Processes[name][i]
+			//s.Processes[name][i].mu.Unlock()
 			//removing the last element
 			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
 			n--
 			deleted++
+
 		}
 	}
 	return deleted
