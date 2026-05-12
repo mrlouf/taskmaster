@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -80,6 +81,8 @@ type Process struct {
 	done      chan error
 	retries   int
 	runID     int
+	outFile   *os.File
+	errFile   *os.File
 }
 
 type Supervisor struct {
