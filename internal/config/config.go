@@ -71,9 +71,9 @@ func setDefaults(config *Config) {
 		if program.NumProcs == 0 {
 			program.NumProcs = 1
 		}
-		if program.Umask == 0 {
+		/* 		if program.Umask == 0 {
 			program.Umask = 0o022
-		}
+		} */
 		if program.WorkingDir == "" {
 			program.WorkingDir = "/tmp"
 		}
