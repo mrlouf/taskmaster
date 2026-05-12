@@ -138,8 +138,8 @@ func (s *Supervisor) startProgram(name string) (error, string) {
 		if err != nil {
 			warning.WriteString(fmt.Sprintf("failed to start process '%s': %s", name, err.Error()))
 			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
-		} else if warn != nil {
-      warning.WriteString(fmt.Sprintf("Process '%s' started with warnings:\n%w", name, warn.Error()))
+		} else if warn != "" {
+			warning.WriteString(fmt.Sprintf("Process '%s' started with warnings:\n%s", name, warn))
 			s.Logger.Log(fmt.Sprintf("Process '%s' started with warnings:\n %v", name, warn))
 		}
 	}
@@ -368,7 +368,7 @@ func (s *Supervisor) Start() {
 				resp := protocol.Response{Ok: err == nil}
 				if err != nil {
 					resp.Msg = err.Error()
-				} else if warn != nil {
+				} else if warn != "" {
 					resp.Msg = fmt.Sprintf("Process '%s' started with warnings: %v", event.Name, warn)
 				} else {
 					resp.Msg = fmt.Sprintf("Process '%s' started", event.Name)
