@@ -43,3 +43,4 @@ go.work.sum
 internal/config/config.go
 *.stdout
 *.stderr
+umask.*
