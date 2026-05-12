@@ -44,7 +44,7 @@ func (s *Supervisor) createProcesses() {
 		// 	s.Processes[name] = append(s.Processes[name], process)
 		// }
 	}
-	fmt.Printf("%d processes were added and %d were deleted\n", added, deleted)
+	s.Logger.Log(fmt.Sprintf("%d processes were added and %d were deleted\n", added, deleted))
 }
 
 func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
