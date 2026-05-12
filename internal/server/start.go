@@ -36,7 +36,10 @@ func HandleRestart(client Client, name string, server *Server) error {
 
 	var resp protocol.Response
 
+	server.Config.Mu.Lock()
 	_, exists := server.Config.Programs[name]
+	server.Config.Mu.Unlock()
+
 	if !exists && name != "" {
 		resp.Ok = false
 		resp.Msg = fmt.Sprintf("Program '%s' not found", name)
