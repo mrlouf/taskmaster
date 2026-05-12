@@ -220,7 +220,9 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program, runID 
 	case err := <-waitDone:
 		startTimer.Stop()
 		done <- err
+		process.mu.Lock()
 		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
+		process.mu.Unlock()
 		return
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
@@ -229,6 +231,8 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program, runID 
 
 	err := <-waitDone
 	done <- err
+	process.mu.Lock()
 	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
+	process.mu.Unlock()
 
 }
