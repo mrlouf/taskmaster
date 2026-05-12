@@ -46,6 +46,10 @@ func (s *Supervisor) handleShutdown() { //events.go
 
 				process.mu.Lock()
 				if process.state != RUNNING && process.state != STARTING && process.state != BACKOFF {
+					process.outFile.Close()
+					process.outFile = nil
+					process.errFile.Close()
+					process.errFile = nil
 					process.mu.Unlock()
 					return
 				}
@@ -75,6 +79,10 @@ func (s *Supervisor) handleShutdown() { //events.go
 				process.done = nil
 				process.pid = 0
 				process.retries = 0
+				process.outFile.Close()
+				process.outFile = nil
+				process.errFile.Close()
+				process.errFile = nil
 				process.mu.Unlock()
 
 			})
@@ -178,6 +186,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		process.state = EXITED
 		process.retries = 0
 		process.pid = 0
+		process.outFile.Close()
+		process.outFile = nil
+		process.errFile.Close()
+		process.errFile = nil
 
 	case "always":
 
@@ -186,6 +198,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 		process.state = EXITED
 		process.retries = 0
 		process.pid = 0
+		process.outFile.Close()
+		process.outFile = nil
+		process.errFile.Close()
+		process.errFile = nil
 
 		event := Event{Kind: EventStartProcess, Name: event.Name, Index: event.Index}
 		go func() {
@@ -201,6 +217,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 			process.state = EXITED
 			process.retries = 0
 			process.pid = 0
+			process.outFile.Close()
+			process.outFile = nil
+			process.errFile.Close()
+			process.errFile = nil
 
 		} else if process.retries < process.Config.StartRetries {
 
@@ -233,7 +253,10 @@ func (s *Supervisor) handleDied(event Event, index int) {
 			process.state = FATAL
 			process.pid = 0
 			process.retries = 0
-
+			process.outFile.Close()
+			process.outFile = nil
+			process.errFile.Close()
+			process.errFile = nil
 		}
 	}
 }
