@@ -66,10 +66,6 @@ func run() error {
 	var pid int
 	pid = os.Getpid()
 
-	//moved to keep pid value in the server struct
-	//_ = os.Remove("/tmp/taskmasterd.pid")                   //remove if already exists
-	//os.WriteFile("/tmp/taskmasterd.pid", []byte(strconv.Itoa(pid)), 0666) //permissions?
-
 	cfg, err := config.LoadConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
