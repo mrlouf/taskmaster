@@ -54,7 +54,6 @@ type Config struct {
 }
 
 func getConfFilePath() string {
-	// error management?
 
 	var path string
 	flag.StringVar(&path, "c", "./taskmaster.conf", "Path to config file")
@@ -145,29 +144,6 @@ func (c *Config) existingProgram(name string) bool {
 
 	return exists
 }
-
-// func (p *Program) updateProgram(new *Program) {
-// 	p.Command = new.Command
-// 	p.NumProcs = new.NumProcs
-// 	p.Umask = new.Umask
-// 	p.WorkingDir = new.WorkingDir
-// 	p.AutoStart = new.AutoStart
-// 	p.AutoRestart = new.AutoRestart
-// 	p.StartRetries = new.StartRetries
-// 	p.StartTime = new.StartTime
-// 	p.StopSignal = new.StopSignal
-// 	p.StopTime = new.StopTime
-// 	p.Stdout = new.Stdout
-// 	p.Stderr = new.Stderr
-// 	p.ExitCodes = make(IntOrSlice)
-// 	for k, v := range new.ExitCodes {
-// 		p.ExitCodes[k] = v
-// 	}
-// 	p.Env := make(map[string]string)
-// 	for k, v := range new.Env {
-// 		p.Env[k] = v
-// 	}
-// }
 
 func (c *Config) addProgram(p *Program, name string, logger logger.Logger) {
 	if c.Programs == nil {

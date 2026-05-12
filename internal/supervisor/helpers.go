@@ -10,8 +10,6 @@ import (
 )
 
 func (s *Supervisor) updateIdx(name string) {
-	// s.bigmu.Lock()
-	// defer s.bigmu.Unlock()
 	for i := 0; i < len(s.Processes[name]); i++ {
 		s.Processes[name][i].mu.Lock()
 		s.Processes[name][i].idx = i
@@ -35,11 +33,9 @@ func (s *Supervisor) sizedownProcesses(name string, n int) int {
 	//since I would touch the whole Process map slice in supervisor, I use a mutex in the Supervisor struct directly
 	s.bigmu.Lock()
 	defer s.bigmu.Unlock()
-	//processes := s.Processes[name]
 	if len(s.Processes[name]) == 0 {
 		return deleted
 	}
-	//deadlocks with 2 imbricated locks?
 	x := len(s.Processes[name])
 	for i := x - 1; i >= 0 && n > 0; i-- {
 		//processes[i].mu.Lock()

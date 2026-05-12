@@ -33,16 +33,6 @@ func (s *Supervisor) createProcesses() {
 			deleted += s.sizedownProcesses(name, len(s.Processes[name])-NumProcs)
 			s.updateIdx(name)
 		}
-		// for i := 0; i < program.NumProcs; i++ {
-		// 	process := &Process{
-		// 		Name:    name,
-		// 		Config:  &program,
-		// 		state:   STOPPED,
-		// 		retries: 0,
-		// 		idx:     i,
-		// 	}
-		// 	s.Processes[name] = append(s.Processes[name], process)
-		// }
 	}
 	s.Logger.Log(fmt.Sprintf("%d processes were added and %d were deleted\n", added, deleted))
 }
