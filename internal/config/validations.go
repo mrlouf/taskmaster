@@ -80,8 +80,6 @@ func validumask(n int) (error, string) {
 	m := syscall.Umask(0o777)
 	syscall.Umask(m)
 
-	fmt.Println(m, n)
-
 	if n < 0 || n > 0o777 {
 		return ErrUmask, ""
 	}
