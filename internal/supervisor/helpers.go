@@ -50,8 +50,6 @@ func (s *Supervisor) sizedownProcesses(name string, n int) int {
 			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
 			n--
 			deleted++
-			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
-			fmt.Printf("N: %d\n", n)
 		}
 		//processes[i].mu.Unlock()
 	}
@@ -72,8 +70,6 @@ func (s *Supervisor) sizedownProcesses(name string, n int) int {
 			s.Processes[name] = s.Processes[name][:len(s.Processes[name])-1]
 			n--
 			deleted++
-			fmt.Printf("Size processes: %d\n", len(s.Processes[name]))
-			fmt.Printf("N: %d\n", n)
 		}
 	}
 	return deleted

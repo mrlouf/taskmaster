@@ -169,19 +169,19 @@ func (c *Config) existingProgram(name string) bool {
 // 	}
 // }
 
-func (c *Config) addProgram(p *Program, name string) {
+func (c *Config) addProgram(p *Program, name string, logger logger.Logger) {
 	if c.Programs == nil {
 		c.Programs = make(map[string]Program)
 	}
-	newProg := p.copyProgram()
+	newProg := p.copyProgram(logger)
 	c.Programs[name] = *newProg
 
-	fmt.Printf("[DEBUG] Added program %s to config\n", name)
-	fmt.Printf("[DEBUG] Program details: %+v\n", c.Programs[name])
+	logger.Log(fmt.Sprintf("[DEBUG] Added program %s to config\n", name))
+	logger.Log(fmt.Sprintf("[DEBUG] Program details: %+v\n", c.Programs[name]))
 }
 
-func (p *Program) copyProgram() *Program {
-	fmt.Printf("[DEBUG] Copy Program\n")
+func (p *Program) copyProgram(logger logger.Logger) *Program {
+	logger.Log("[DEBUG] Copy Program\n")
 	copyprog := &Program{
 		Command:      p.Command,
 		NumProcs:     p.NumProcs,
@@ -226,7 +226,7 @@ func ReloadConfig(Current *Config, path string, logger logger.Logger) (*Config, 
 		if !NewCfg.existingProgram(name) {
 			Current.Mu.Lock()
 			logger.Log(fmt.Sprintf("Program %s not found in new file, to be deleted\n", name))
-			Deletion.addProgram(&program, name)
+			Deletion.addProgram(&program, name, logger)
 			logger.Log("Added to Deletion\n")
 			toBeDeleted[name] = program
 			Current.Mu.Unlock()
@@ -245,7 +245,7 @@ func ReloadConfig(Current *Config, path string, logger logger.Logger) (*Config, 
 		if !Current.existingProgram(name) {
 			Current.Mu.Lock()
 			logger.Log("Adding new program to config\n")
-			Current.addProgram(&program, name)
+			Current.addProgram(&program, name, logger)
 			Current.Mu.Unlock()
 		}
 	}
