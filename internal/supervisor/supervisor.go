@@ -26,38 +26,6 @@ func (s *Supervisor) handleReload(path string) error {
 	}
 	s.createProcesses()
 	s.autoStartProcesses()
-	//using dedicated factored functions above
-	// for name, program := range s.Config.Programs {
-
-	// 	// ! And add only processes to new programs,
-	// 	// ! otherwise we would add additional processes to existing programs
-	// 	if _, exists := s.Processes[name]; exists == false {
-	// 		for i := 0; i < program.NumProcs; i++ {
-	// 			process := &Process{
-	// 				Name:    name,
-	// 				Config:  &program,
-	// 				state:   STOPPED,
-	// 				retries: 0,
-	// 				idx:     i,
-	// 			}
-	// 			s.Processes[name] = append(s.Processes[name], process)
-
-	// 		}
-	// 	}
-
-	// 	if program.AutoStart {
-	// 		if err := s.startProgram(name); err != nil {
-	// 			s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
-	// 		}
-	// 	}
-	// }
-	// for name, program := range s.Config.Programs {
-	// 	if program.AutoStart {
-	// 		if err := s.startProgram(name); err != nil {
-	// 			s.Logger.Log(fmt.Sprintf("Failed to auto-start program during reload '%s': %v", name, err))
-	// 		}
-	// 	}
-	// }
 	return nil
 }
 

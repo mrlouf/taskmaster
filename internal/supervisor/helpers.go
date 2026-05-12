@@ -39,7 +39,6 @@ func (s *Supervisor) sizedownProcesses(name string, n int) int {
 	if len(s.Processes[name]) == 0 {
 		return deleted
 	}
-	//deadlocks with 2 imbricated locks?
 	x := len(s.Processes[name])
 	for i := x - 1; i >= 0 && n > 0; i-- {
 		s.Processes[name][i].mu.Lock()
