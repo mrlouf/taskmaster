@@ -7,10 +7,10 @@ import (
 	"net"
 	"os"
 
-	"github.com/mrlouf/taskmaster/internal/config"
-	"github.com/mrlouf/taskmaster/internal/logger"
-	"github.com/mrlouf/taskmaster/internal/protocol"
-	"github.com/mrlouf/taskmaster/internal/supervisor"
+	"taskmaster/internal/config"
+	"taskmaster/internal/logger"
+	"taskmaster/internal/protocol"
+	"taskmaster/internal/supervisor"
 )
 
 type Client struct {

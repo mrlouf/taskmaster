@@ -7,11 +7,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/mrlouf/taskmaster/internal/config"
-	"github.com/mrlouf/taskmaster/internal/logger"
-	"github.com/mrlouf/taskmaster/internal/protocol"
-	"github.com/mrlouf/taskmaster/internal/server"
-	"github.com/mrlouf/taskmaster/internal/supervisor"
+	"taskmaster/internal/config"
+	"taskmaster/internal/logger"
+	"taskmaster/internal/protocol"
+	"taskmaster/internal/server"
+	"taskmaster/internal/supervisor"
 )
 
 func handleSigterm(s *supervisor.Supervisor) {

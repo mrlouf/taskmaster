@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mrlouf/taskmaster/internal/protocol"
+	"taskmaster/internal/protocol"
 )
 
 func RequestAllStatus(client Client) error {
