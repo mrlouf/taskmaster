@@ -10,10 +10,12 @@ import (
 )
 
 func (s *Supervisor) updateIdx(name string) {
-	s.bigmu.Lock()
-	defer s.bigmu.Unlock()
+	// s.bigmu.Lock()
+	// defer s.bigmu.Unlock()
 	for i := 0; i < len(s.Processes[name]); i++ {
+		s.Processes[name][i].mu.Lock()
 		s.Processes[name][i].idx = i
+		s.Processes[name][i].mu.Unlock()
 	}
 }
 
