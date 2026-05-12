@@ -48,6 +48,7 @@ func (s *Supervisor) createProcesses() {
 }
 
 func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
+
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
@@ -71,27 +72,34 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 	cmd := exec.Command(args[0], args[1:]...)
 
 	var warn strings.Builder
+	var warn_out, warn_err error
 
 	env := os.Environ()
 	env = append(env, convertEnvMapToSlice(cfg.Env)...)
 	cmd.Env = env
 	cmd.Dir = cfg.WorkingDir
 
-	if outfile, warn_out := s.getStdfile(cfg.Stdout); warn_out != nil {
+	process.mu.Lock()
+	if process.outFile, warn_out = s.getStdfile(cfg.Stdout); warn_out != nil {
 		s.Logger.Log(fmt.Sprintf("Error while opening StdOut path '%s' for Program '%s': '%v'\n Defaulting to standard output", cfg.Stdout, process.Name, warn_out))
-		warn.WriteString("Defaulting to standard output")
+		warn.WriteString("Defaulting to standard output\n")
 		cmd.Stdout = os.Stdout
+		process.outFile = nil
 	} else {
-		cmd.Stdout = outfile
+		cmd.Stdout = process.outFile
 	}
+	process.mu.Unlock()
 
-	if errfile, warn_err := s.getStdfile(cfg.Stderr); warn_err != nil {
+	process.mu.Lock()
+	if process.errFile, warn_err = s.getStdfile(cfg.Stderr); warn_err != nil {
 		s.Logger.Log(fmt.Sprintf("Error while opening StdErr path '%s' for Program '%s': '%v'\n Defaulting to standard error output", cfg.Stderr, process.Name, warn_err))
-		warn.WriteString("Defaulting to standard error")
+		warn.WriteString("Defaulting to standard error\n")
 		cmd.Stderr = os.Stderr
+		process.errFile = nil
 	} else {
-		cmd.Stderr = errfile
+		cmd.Stderr = process.errFile
 	}
+	process.mu.Unlock()
 
 	err := cmd.Start()
 	if err != nil {
@@ -162,12 +170,17 @@ func (s *Supervisor) stopProcess(process *Process, cfg config.Program) error {
 		process.cmd.Err = <-process.done
 	}
 
+	process.outFile.Close()
+	process.errFile.Close()
+
 	// Reset process state and metadata after it has stopped
 	process.mu.Lock()
 	process.state = STOPPED
 	process.retries = 0
 	process.done = nil
 	process.pid = 0
+	process.errFile = nil
+	process.outFile = nil
 	process.mu.Unlock()
 
 	s.Logger.Log(fmt.Sprintf("Process '%s' has been STOPPED", process.Name))
