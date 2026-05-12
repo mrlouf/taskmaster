@@ -85,7 +85,6 @@ type Process struct {
 type Supervisor struct {
 	Config    *config.Config
 	Logger    *logger.Logger
-	bigmu     sync.Mutex
 	Processes map[string][]*Process
 	Events    chan Event
 	Ready     chan bool
