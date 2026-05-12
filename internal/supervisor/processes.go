@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mrlouf/taskmaster/internal/config"
@@ -101,10 +102,16 @@ func (s *Supervisor) startProcess(process *Process, cfg config.Program) (error, 
 	}
 	process.mu.Unlock()
 
+	// Umask is set process-wide and could theoretically race with file creation
+	// in other goroutines (e.g. logger). In practice this is safe because all
+	// critical operations go through the event loop sequentially, and the logger
+	// file is opened once at startup.
+	old := syscall.Umask(cfg.Umask)
 	err := cmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start process '%s': %w", process.Name, err), ""
 	}
+	syscall.Umask(old)
 
 	process.mu.Lock()
 	process.cmd = cmd

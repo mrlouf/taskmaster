@@ -3,12 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
+	"syscall"
 )
 
 var ErrInvalidPath = errors.New("detected forbidden null character")
 var ErrNumSPos = errors.New("must be a positive integer > 0")
 var ErrNumPos = errors.New("must be a positive integer >= 0")
-var ErrUmask = errors.New("invalid umask code")
+var ErrUmask = errors.New("umask must be between 0000 and 0777 (octal)")
 var ErrAutoStart = errors.New("invalid keyword for AutoStart")
 var ErrAutoRestart = errors.New("invalid keyword for AutoRestart")
 var ErrStopSignal = errors.New("invalid keyword for StopSignal")
@@ -72,53 +73,72 @@ func validenv(str map[string]string) error {
 	return nil
 }
 
-// func validumask(n int) error {
+func validumask(n int) (error, string) {
 
-// 	return nil
-// }
+	// You can't get your own umask without setting it:
+	// https://github.com/golang/go/blob/master/src/cmd/go/internal/toolchain/umask_unix.go
+	m := syscall.Umask(0o777)
+	syscall.Umask(m)
+
+	fmt.Println(m, n)
+
+	if n < 0 || n > 0o777 {
+		return ErrUmask, ""
+	}
+
+	var warning string
+
+	if n < m {
+		warning = fmt.Sprintf("umask %04o requested but effective permissions may be more restrictive\n", n)
+	}
+
+	return nil, warning
+}
 
 func validate(config *Config) error {
 	var errs []error
 
 	for name, program := range config.Programs {
 		if err := isnotnullchar(program.Command); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field Command: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field Command: %w", name, err))
 		}
 		if err := ispositivedigit(program.NumProcs, true); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field NumProcs: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field NumProcs: %w", name, err))
 		}
-		// if err := validumask(program.Umask); err != nil {
-		// 	errs = append(errs, fmt.Errorf("Program %s, Field Umask: %w", name, err))
-		// }
+		if err, warn := validumask(program.Umask); err != nil {
+			errs = append(errs, fmt.Errorf("Program '%s', Field Umask: %w", name, err))
+		} else if warn != "" {
+			fmt.Printf("Warning: program '%s': %s", name, warn)
+		}
 		if err := isnotnullchar(program.WorkingDir); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field WorkingDir: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field WorkingDir: %w", name, err))
 		}
 		if err := validautorestart(program.AutoRestart); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field AutoRestart: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field AutoRestart: %w", name, err))
 		}
 		if err := ispositivedigit(program.ExitCodes, false); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field ExitCodes: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field ExitCodes: %w", name, err))
 		}
 		if err := ispositivedigit(program.StartRetries, false); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field StartRetries: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field StartRetries: %w", name, err))
 		}
 		if err := ispositivedigit(program.StartTime, false); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field StartTime: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field StartTime: %w", name, err))
 		}
 		if err := validstopsignal(program.StopSignal); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field StopSignal: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field StopSignal: %w", name, err))
 		}
 		if err := ispositivedigit(program.StopTime, false); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field StopTime: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field StopTime: %w", name, err))
 		}
 		if err := isnotnullchar(program.Stdout); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field Stdout: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field Stdout: %w", name, err))
 		}
 		if err := isnotnullchar(program.Stderr); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field Stderr: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field Stderr: %w", name, err))
 		}
 		if err := validenv(program.Env); err != nil {
-			errs = append(errs, fmt.Errorf("Program %s, Field Env: %w", name, err))
+			errs = append(errs, fmt.Errorf("Program '%s', Field Env: %w", name, err))
 		}
 	}
 	return errors.Join(errs...)
