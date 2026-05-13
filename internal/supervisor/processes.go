@@ -131,7 +131,7 @@ func (s *Supervisor) autoStartProcesses() {
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
 			} else if warn != "" {
-				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, warn))
+				s.Logger.Log(fmt.Sprintf("Program '%s' auto-started with following warnings: '%v'", name, warn))
 			}
 		}
 	}
