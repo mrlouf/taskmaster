@@ -35,7 +35,7 @@ func (s *Supervisor) createProcesses() {
 			s.updateIdx(name)
 		}
 	}
-	s.Logger.Log(fmt.Sprintf("%d processes were added and %d were deleted\n", added, deleted))
+	s.Logger.Log(fmt.Sprintf("%d processes were added and %d were deleted", added, deleted))
 }
 
 func (s *Supervisor) getStdfile(filename string) (*os.File, error) {
@@ -131,7 +131,7 @@ func (s *Supervisor) autoStartProcesses() {
 			if err != nil {
 				s.Logger.Log(fmt.Sprintf("Failed to auto-start program '%s': %v", name, err))
 			} else if warn != "" {
-				s.Logger.Log(fmt.Sprintf("Program '%s' auto-stared with following warnings: '%v'", name, warn))
+				s.Logger.Log(fmt.Sprintf("Program '%s' auto-started with following warnings:\n%v", name, warn))
 			}
 		}
 	}
@@ -211,18 +211,25 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program, runID 
 		startTimer.Stop()
 		done <- err
 		process.mu.Lock()
-		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
+		event := Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 		process.mu.Unlock()
+
+		s.Events <- event
 		return
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
-		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx, RunID: runID}
+		event := Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx, RunID: runID}
+		s.Events <- event
 	}
 
 	err := <-waitDone
 	done <- err
 	process.mu.Lock()
-	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
+	event := Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 	process.mu.Unlock()
+
+	go func() {
+		s.Events <- event
+	}()
 
 }
