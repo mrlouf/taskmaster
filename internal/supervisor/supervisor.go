@@ -115,8 +115,8 @@ func (s *Supervisor) startProgram(name string) (error, string) {
 			warning.WriteString(fmt.Sprintf("failed to start process %s: %s", name, err.Error()))
 			s.Logger.Log(fmt.Sprintf("Failed to start process %s: %v", name, err))
 		} else if warn != "" {
-			warning.WriteString(fmt.Sprintf("Process '%s' started with warnings:\n%s", name, warn))
-			s.Logger.Log(fmt.Sprintf("Process '%s' started with warnings:\n %v", name, warn))
+			warning.WriteString(fmt.Sprintf("Process '%s' started but reported warnings:\n%s", name, warn))
+			s.Logger.Log(fmt.Sprintf("Process '%s' started but reported warnings:\n %v", name, warn))
 		}
 	}
 
@@ -337,7 +337,7 @@ func (s *Supervisor) Start() {
 				if err != nil {
 					resp.Msg = err.Error()
 				} else if warn != "" {
-					resp.Msg = fmt.Sprintf("Program '%s' started with warnings: %v", event.Name, warn)
+					resp.Msg = fmt.Sprintf("Program '%s' reported warnings: %v", event.Name, warn)
 				} else {
 					resp.Msg = fmt.Sprintf("Program '%s' started", event.Name)
 				}
@@ -360,7 +360,7 @@ func (s *Supervisor) Start() {
 				if err != nil {
 					resp.Msg = err.Error()
 				} else if warn != "" {
-					resp.Msg = fmt.Sprintf("Process '%s' started with warnings: %v", event.Name, warn)
+					resp.Msg = fmt.Sprintf("Process '%s' started but reported warnings: %v", event.Name, warn)
 				} else {
 					resp.Msg = fmt.Sprintf("Process '%s' started", event.Name)
 				}
