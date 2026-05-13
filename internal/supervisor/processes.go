@@ -211,18 +211,25 @@ func (s *Supervisor) monitorProcess(process *Process, cfg config.Program, runID 
 		startTimer.Stop()
 		done <- err
 		process.mu.Lock()
-		s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
+		event := Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 		process.mu.Unlock()
+
+		s.Events <- event
 		return
 	// Timer reaches zero: process is considered ready
 	case <-startTimer.C:
-		s.Events <- Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx, RunID: runID}
+		event := Event{Kind: EventProcessReady, Name: process.Name, Index: process.idx, RunID: runID}
+		s.Events <- event
 	}
 
 	err := <-waitDone
 	done <- err
 	process.mu.Lock()
-	s.Events <- Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
+	event := Event{Kind: EventProcessDied, Name: process.Name, Index: process.idx, RunID: runID, Err: err}
 	process.mu.Unlock()
+
+	go func() {
+		s.Events <- event
+	}()
 
 }
