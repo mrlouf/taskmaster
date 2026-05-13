@@ -81,7 +81,7 @@ func RequestStart(client Client, name string) error {
 	if resp.Ok {
 		prefix := "Program '" + name + "' started with warnings:"
 		if warnMsg, exists := strings.CutPrefix(resp.Msg, prefix); exists {
-			return fmt.Errorf("program '%s' started but with following warnings:\n%s", name, strings.TrimSpace(warnMsg))
+			return fmt.Errorf("program '%s' reported following warnings:\n%s", name, strings.TrimSpace(warnMsg))
 		}
 		fmt.Printf("Program '%s' started\n", name)
 	} else if !resp.Ok {
