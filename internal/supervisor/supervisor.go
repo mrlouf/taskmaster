@@ -112,8 +112,8 @@ func (s *Supervisor) startProgram(name string) (error, string) {
 
 		err, warn := s.startProcess(process, cfg)
 		if err != nil {
-			warning.WriteString(fmt.Sprintf("failed to start process '%s': %s", name, err.Error()))
-			s.Logger.Log(fmt.Sprintf("Failed to start process '%s': %v", name, err))
+			warning.WriteString(fmt.Sprintf("failed to start process %s: %s", name, err.Error()))
+			s.Logger.Log(fmt.Sprintf("Failed to start process %s: %v", name, err))
 		} else if warn != "" {
 			warning.WriteString(fmt.Sprintf("Process '%s' started with warnings:\n%s", name, warn))
 			s.Logger.Log(fmt.Sprintf("Process '%s' started with warnings:\n %v", name, warn))
