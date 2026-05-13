@@ -153,12 +153,12 @@ func (c *Config) addProgram(p *Program, name string, logger logger.Logger) {
 	newProg := p.copyProgram(logger)
 	c.Programs[name] = *newProg
 
-	logger.Log(fmt.Sprintf("[DEBUG] Added program %s to config\n", name))
-	logger.Log(fmt.Sprintf("[DEBUG] Program details: %+v\n", c.Programs[name]))
+	logger.Log(fmt.Sprintf("Added program %s to config", name))
+	logger.Log(fmt.Sprintf("Program details: %+v", c.Programs[name]))
 }
 
 func (p *Program) copyProgram(logger logger.Logger) *Program {
-	logger.Log("[DEBUG] Copy Program\n")
+	logger.Log("Copy Program")
 	copyprog := &Program{
 		Command:      p.Command,
 		NumProcs:     p.NumProcs,
@@ -195,33 +195,33 @@ func ReloadConfig(Current *Config, path string, logger logger.Logger) (*Config, 
 	if err != nil {
 		return nil, err
 	}
-	logger.Log("New config file reloaded\n")
+	logger.Log("New config file reloaded")
 
 	toBeDeleted := make(map[string]Program)
 
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
 			Current.Mu.Lock()
-			logger.Log(fmt.Sprintf("Program %s not found in new file, to be deleted\n", name))
+			logger.Log(fmt.Sprintf("Program %s not found in new file, to be deleted", name))
 			Deletion.addProgram(&program, name, logger)
-			logger.Log("Added to Deletion\n")
+			logger.Log("Added to Deletion")
 			toBeDeleted[name] = program
 			Current.Mu.Unlock()
 		} else {
 			Current.Mu.Lock()
-			logger.Log(fmt.Sprintf("Updating current config of %s\n", name))
+			logger.Log(fmt.Sprintf("Updating current config of %s", name))
 			Current.Programs[name] = NewCfg.Programs[name]
 			Current.Mu.Unlock()
 		}
 	}
 	for name := range toBeDeleted {
 		delete(Current.Programs, name)
-		logger.Log("Deleted\n")
+		logger.Log("Deleted")
 	}
 	for name, program := range NewCfg.Programs {
 		if !Current.existingProgram(name) {
 			Current.Mu.Lock()
-			logger.Log("Adding new program to config\n")
+			logger.Log("Adding new program to config")
 			Current.addProgram(&program, name, logger)
 			Current.Mu.Unlock()
 		}

@@ -182,10 +182,12 @@ func HandleProgramList(client Client, server *Server) error {
 	var resp protocol.Response
 
 	var programNames []string
+	server.Config.Mu.Lock()
 	for name := range server.Config.Programs {
 		programNames = append(programNames, name)
 	}
-
+	server.Config.Mu.Unlock()
+	
 	resp.Ok = true
 	resp.Msg = strings.Join(programNames, "\n")
 
