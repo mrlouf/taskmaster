@@ -52,6 +52,7 @@ type Config struct {
 	Mu         sync.Mutex
 	Programs   map[string]Program `yaml:"programs"`
 	ConfigPath string
+	MaxEvent   int
 }
 
 func getConfFilePath() string {
@@ -102,6 +103,22 @@ func setDefaults(config *Config) {
 
 }
 
+func getMaxProcs(cfg *Config) int {
+	
+	var max int
+
+	for prog := range cfg.Programs {
+		if max < prog.NumProcs {
+			max = prog.NumProcs
+		}
+	}
+	if max < 100 {
+		max = 100
+	}
+	return max * 1.2
+
+}
+
 func getNodeConfig(file *os.File) (*Config, error) {
 
 	cfg := &Config{}
@@ -137,6 +154,7 @@ func LoadConfig(path string) (*Config, error) {
 		// fmt.Printf("err %v", err)
 		return nil, fmt.Errorf("configuration file format error '%s':\n%w", path, err)
 	}
+	cfg.MaxEvent = getMaxProcs(cfg)
 	return cfg, nil
 }
 
@@ -186,19 +204,20 @@ func (p *Program) copyProgram(logger logger.Logger) *Program {
 	return copyprog
 }
 
-func ReloadConfig(Current *Config, path string, logger logger.Logger) (*Config, error) {
+func ReloadConfig(Current *Config, path string, logger logger.Logger) (*Config, chan Event, error) {
 	Deletion := &Config{}
 	if path == "" {
 		path = Current.ConfigPath
 	}
 	NewCfg, err := LoadConfig(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	logger.Log("New config file reloaded\n")
 
 	toBeDeleted := make(map[string]Program)
-
+	Current.MaxEvent = NewCfg.MaxEvent
+	newchan := make(chan Event, Current.MaxEvent) 
 	for name, program := range Current.Programs {
 		if !NewCfg.existingProgram(name) {
 			Current.Mu.Lock()
@@ -227,5 +246,5 @@ func ReloadConfig(Current *Config, path string, logger logger.Logger) (*Config, 
 		}
 	}
 	Current.ConfigPath = path
-	return Deletion, nil
+	return Deletion, newchan, nil
 }

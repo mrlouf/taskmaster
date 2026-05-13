@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Supervisor) handleReload(path string) error {
-	if ToDel, err := config.ReloadConfig(s.Config, path, *s.Logger); err != nil {
+	if ToDel, NewChan, err := config.ReloadConfig(s.Config, path, *s.Logger); err != nil {
 
 		s.Logger.Log(fmt.Sprintf("Failed to reload new config file: %v", err))
 		return err
@@ -24,6 +24,7 @@ func (s *Supervisor) handleReload(path string) error {
 		}
 		ToDel = nil
 	}
+	s.Event = NewChan
 	s.createProcesses()
 	s.autoStartProcesses()
 	return nil

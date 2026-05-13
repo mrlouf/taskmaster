@@ -93,13 +93,16 @@ type Supervisor struct {
 	Ready     chan bool
 }
 
-func New(config *config.Config, logger *logger.Logger) *Supervisor {
+func New(config *config.Config, logger *logger.Logger, eventsize int) *Supervisor {
 
+	if evensize < 100 {
+		eventsize = 100
+	}
 	return &Supervisor{
 		Config:    config,
 		Logger:    logger,
 		Processes: make(map[string][]*Process),
-		Events:    make(chan Event, 100), // ! 100 is arbitrary
+		Events:    make(chan Event, eventsize),
 		Ready:     make(chan bool, 1),
 	}
 }

@@ -77,7 +77,7 @@ func run() error {
 	}
 	defer logger.Close()
 
-	supervisor := supervisor.New(cfg, logger)
+	supervisor := supervisor.New(cfg, logger, cfg.MaxEvent)
 
 	server, err := server.New(cfg, logger, supervisor, pid)
 	if err != nil {
