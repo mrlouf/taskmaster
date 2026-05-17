@@ -29,6 +29,8 @@ The supported commands are:
 
 ## Process States
 
+<img width="1638" height="735" alt="taskmaster_states" src="https://github.com/user-attachments/assets/29ca6ba6-7114-4b29-90e9-06dc2ff70976" />
+
 The daemon manages the state of each process and updates it accordingly. The possible states are:
 
 - `STARTING`: The process is starting. This state is entered when the daemon receives a command to start the process or the process has an autostart policy, and will remain in this state until the start time has been reached or the process has successfully started.
